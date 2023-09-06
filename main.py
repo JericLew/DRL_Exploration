@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import imageio
 import numpy as np
 import torch
+import torch.nn as nn
 from env import Env
 from parameter import *
 
@@ -16,6 +17,7 @@ class Worker:
         self.save_image = save_image
 
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
+        # self.policy_net = policy_net
 
         # self.current_node_index = 0
         self.travel_dist = 0
@@ -42,52 +44,76 @@ class Worker:
         if y_end >= full_h:
             y_start, y_end = full_h - local_h, full_h
 
-        return y_start, y_end, x_start, x_end
+        local_robot_y = y_center - y_start
+        local_robot_x = x_center - x_start
+
+        return y_start, y_end, x_start, x_end, local_robot_y, local_robot_x
 
     def get_observations(self): # get 8 x g x g input for model
+        # observation[0, :, :] probability of obstacle
+        # observation[1, :, :] probability of exploration
+        # observation[2, :, :] indicator of current position
+        # observation[3, :, :] indicator of visited
+
+        # TODO make it less computationally intensive (update local only then patch on global)
         robot_belief = copy.deepcopy(self.env.robot_belief)
+        visited_map = copy.deepcopy(self.env.visited_map)
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-        local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))    # (h,w) # TODO 2 is a downsize parameter
+        local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
+        
+        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1])
+        local_map = torch.zeros(4, local_size[0], local_size[1])
+        observations = torch.zeros(8, local_size[0], local_size[1]) # (8,height,width)
 
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
 
-        local_map = copy.deepcopy(self.env.robot_belief)
-        local_map = local_map[lmb[0]:lmb[1], lmb[2]:lmb[3]]
-        observations = torch.zeros(8, local_size[0], local_size[1])
-
         # Create a mask for each condition
-        mask_1 = (local_map == 1)
-        mask_255 = (local_map == 255)
-        mask_127 = (local_map == 127)
+        mask_obst = (robot_belief == 1) # if colour 1 : index 0 = 1, index 1 = 1 obst
+        mask_free = (robot_belief == 255) # if colour 255: index 0 = 0, index 1 = 1 free
+        mask_unkn = (robot_belief == 127) # if colour 127: index 0 = 0, index 1 = 0 unkw
+        mask_visi = (visited_map == 1) # if visited: index : 3 = 1 vist
 
-        # Update observations based on the masks
-        # if colour 1 : index 0 = 1, index 1 = 1 obst
-        # if colour 255: index 0 = 0, index 1 = 1 free
-        # if colour 127: index 0 = 0, index 1 = 0 unkw
-        observations[0, mask_1] = 1
-        observations[1, mask_1] = 1
-        observations[0, mask_255] = 0
-        observations[1, mask_255] = 1
-        observations[0, mask_127] = 0
-        observations[1, mask_127] = 0
+        # Update robot_belief based on the masks
+        global_map[0, mask_obst] = 1
+        global_map[1, mask_obst] = 1
+        global_map[0, mask_free] = 0
+        global_map[1, mask_free] = 1
+        global_map[0, mask_unkn] = 0
+        global_map[1, mask_unkn] = 0
+        global_map[3, mask_visi] = 1
+        global_map[2, self.robot_position[1] - 2:self.robot_position[1] + 3, \
+                    self.robot_position[0] - 2:self.robot_position[0] + 3] = 1
+                    # if robot_y and robot_x: index 2 = 1 
+        
+        local_map = global_map[:, lmb[0]:lmb[1], lmb[2]:lmb[3]] # (width,height)
 
-        print(local_map[127,127])
-        print(observations[:,127, 127])
+        observations[0:4, :, :] = local_map
+        observations[4:, :, :] = nn.MaxPool2d(2)(global_map)
 
-        # TODO keep a attribute in env that tracts visited pos
-        # TODO change index 3 to 1 for current pos (maybe an area of 4x4)
-
-        # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+        # # map check uncomment to check output of observation
+        # fig, axes = plt.subplots(1, 3, figsize=(10, 5))
         # axes[0].imshow(robot_belief, cmap='gray')
-        # axes[1].imshow(local_map, cmap='gray')
+        # axes[1].imshow(global_map[2, : :], cmap='gray') 
+        # axes[2].imshow(local_map[2, : :], cmap='gray')
         # plt.savefig('output.png')
-
-        # observations[4:, :, :] = nn.MaxPool2d(args.global_downscaling)(full_map)
 
         return observations
     
-    # def select_next_position(self, observations): # change this
-    #     return next_position, action_index
+    def select_next_position(self, observations): # TODO change this
+        # node_inputs, edge_inputs, current_index, node_padding_mask, edge_padding_mask, edge_mask = observations
+        # with torch.no_grad():
+        #     logp_list = self.policy_net(node_inputs, edge_inputs, current_index, node_padding_mask,
+        #                                       edge_padding_mask, edge_mask)
+
+        # if self.greedy:
+        #     action_index = torch.argmax(logp_list, dim=1).long()
+        # else:
+        #     action_index = torch.multinomial(logp_list.exp(), 1).long().squeeze(1)
+
+        # next_node_index = edge_inputs[0, 0, action_index.item()]
+        # next_position = self.env.node_coords[next_node_index]
+
+        return next_position, action_index
     
     # def save_observations(self, observations):
     #     node_inputs, edge_inputs, current_index, node_padding_mask, edge_padding_mask, edge_mask = observations
@@ -118,7 +144,7 @@ class Worker:
         done = False
 
         for i in range(128):
-            next_position = self.robot_position # np.array([i*5,240])
+            next_position = np.array([i*5,240])
             self.get_observations()
             reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, self.travel_dist)
 

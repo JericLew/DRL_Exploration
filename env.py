@@ -32,16 +32,17 @@ class Env():
         self.explored_rate = 0
 
         self.frontiers = None
+        self.visited_map = np.zeros(self.ground_truth_size)
+        self.visited_map[self.start_position[1] - 2:self.start_position[1] + 3,\
+                        self.start_position[0] - 2:self.start_position[0] + 3] = 1
+        self.visited = np.array([self.start_position])
 
         self.begin()
 
         # plot related
         self.plot = plot
         self.frame_files = []
-        if self.plot:
-            # initialize the route
-            self.xPoints = [self.start_position[0]]
-            self.yPoints = [self.start_position[1]]
+
 
     def begin(self):
         self.robot_belief = self.update_robot_belief(self.start_position, self.sensor_range, self.robot_belief,
@@ -70,9 +71,9 @@ class Env():
         # calculate the reward associated with the action
         reward = self.calculate_reward(dist, frontiers)
 
-        if self.plot:
-            self.xPoints.append(robot_position[0])
-            self.yPoints.append(robot_position[1])
+        self.visited_map[robot_position[1] - 2:robot_position[1] + 3,\
+                        robot_position[0] - 2:robot_position[0] + 3] = 1
+        self.visited = np.append(self.visited, [robot_position], axis=0) # can be faster?
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -110,6 +111,7 @@ class Env():
         return done
 
     def calculate_reward(self, dist, frontiers):
+        # TODO Modify this
         reward = 0
         reward -= dist / 64
 
@@ -174,9 +176,9 @@ class Env():
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
-        plt.plot(self.xPoints, self.yPoints, 'b', linewidth=2)
-        plt.plot(self.xPoints[-1], self.yPoints[-1], 'mo', markersize=8)
-        plt.plot(self.xPoints[0], self.yPoints[0], 'co', markersize=8)
+        plt.plot(self.visited[:, 0], self.visited[:, 1], 'b', linewidth=2)
+        plt.plot(self.visited[-1, 0], self.visited[-1, 1], 'mo', markersize=8)
+        plt.plot(self.visited[0, 0], self.visited[0, 1], 'co', markersize=8)
         # plt.pause(0.1)
         plt.suptitle('Explored ratio: {:.4g}  Travel distance: {:.4g}'.format(self.explored_rate, travel_dist))
         plt.tight_layout()
