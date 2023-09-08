@@ -6,24 +6,31 @@ import imageio
 import numpy as np
 import torch
 import torch.nn as nn
+
 from env import Env
 from parameter import *
 
+from network import Global_Policy 
+from utils import DiagGaussian
+
 class Worker:
-    def __init__(self, global_step, device='cuda', save_image=False):
+    def __init__(self, global_step, network, device='cuda', save_image=False):
         self.device = device
         self.global_step = global_step
         self.k_size = K_SIZE
         self.save_image = save_image
 
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
-        # self.policy_net = policy_net
+
+        self.network = network
+        self.dist = DiagGaussian(self.network.output_size, 2) # 256, 2
+        # 2 is from box environment defined, cos x and y coord vector space
 
         # self.current_node_index = 0
         self.travel_dist = 0
         self.robot_position = self.env.start_position
 
-        self.episode_buffer = []
+        self.episode_buffer = [] # rollout
         self.perf_metrics = dict()
         for i in range(15):
             self.episode_buffer.append([])
@@ -99,22 +106,13 @@ class Worker:
 
         return observations
     
-    def select_next_position(self, observations): # TODO change this
-        # node_inputs, edge_inputs, current_index, node_padding_mask, edge_padding_mask, edge_mask = observations
-        # with torch.no_grad():
-        #     logp_list = self.policy_net(node_inputs, edge_inputs, current_index, node_padding_mask,
-        #                                       edge_padding_mask, edge_mask)
+    def act(self, observations, network): # TODO change this
+        value, actor_features = network(observations)
+        dist = self.dist(actor_features)
+        action = dist.sample()
+        action_log_probs = dist.log_probs(action)
+        return value, action, action_log_probs
 
-        # if self.greedy:
-        #     action_index = torch.argmax(logp_list, dim=1).long()
-        # else:
-        #     action_index = torch.multinomial(logp_list.exp(), 1).long().squeeze(1)
-
-        # next_node_index = edge_inputs[0, 0, action_index.item()]
-        # next_position = self.env.node_coords[next_node_index]
-
-        return next_position, action_index
-    
     # def save_observations(self, observations):
     #     node_inputs, edge_inputs, current_index, node_padding_mask, edge_padding_mask, edge_mask = observations
     #     self.episode_buffer[0] += copy.deepcopy(node_inputs)
@@ -143,10 +141,37 @@ class Worker:
     def run_episode(self, curr_episode):
         done = False
 
+        observations = self.get_observations()
         for i in range(128):
-            next_position = np.array([i*5,240])
+            print(f"\nstep: {i}")
+            value, raw_action, action_log_probs = self.act(observations, self.network)
+
+            post_sig_action = nn.Sigmoid()(raw_action).cpu().numpy()
+            print(f"post_sig_action {post_sig_action}")
+            ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
+            local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
+            lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
+            target_position = np.array([int(post_sig_action[0][1] * 320 + lmb[2]), int(post_sig_action[0][0] * 240 + lmb[0])]) # [x,y]
+            print(f"targ_pos {target_position}")
+
+
+            # if len(self.env.frontiers) != 0:
+            best_frontier = self.env.frontiers[0]
+            min_distance = np.linalg.norm(target_position - best_frontier)
+
+            for frontier_idx in range(1, len(self.env.frontiers)):
+                distance_to_current = np.linalg.norm(target_position - self.env.frontiers[frontier_idx])
+                if distance_to_current < min_distance:
+                    best_frontier = self.env.frontiers[frontier_idx]
+                    min_distance = distance_to_current
+
+            next_position = best_frontier
+            #     next_position = self.robot_position
+
+            print(f"next_pos {next_position}")
+
             self.get_observations()
-            reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, self.travel_dist)
+            reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
 
             # save a frame
             if self.save_image:
@@ -174,9 +199,12 @@ class Worker:
         print('gif complete\n')
 
         # Remove files
-        for filename in self.env.frame_files[:-1]:
-            os.remove(filename)
+        # for filename in self.env.frame_files[:-1]:
+        #     os.remove(filename)
 
+# ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
+# local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
 
-worker = Worker(1,save_image=True)
+global_policy = Global_Policy((8,240,320), 256)
+worker = Worker(1, global_policy,save_image=True)
 worker.work(1)

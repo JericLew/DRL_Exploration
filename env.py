@@ -36,6 +36,7 @@ class Env():
         self.visited_map[self.start_position[1] - 2:self.start_position[1] + 3,\
                         self.start_position[0] - 2:self.start_position[0] + 3] = 1
         self.visited = np.array([self.start_position])
+        self.targets = np.array([self.start_position])
 
         self.begin()
 
@@ -54,12 +55,14 @@ class Env():
         self.frontiers = self.find_frontier()
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
-    def step(self, robot_position, next_position, travel_dist):
+    def step(self, robot_position, next_position, target_position, travel_dist):
         # move the robot to the selected position and update its belief
         dist = np.linalg.norm(robot_position - next_position)
         travel_dist += dist
+        print(f"robot pos before {robot_position}")
+        robot_position = next_position 
+        print(f"robot pos after {robot_position}")
 
-        robot_position = next_position
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
         self.downsampled_belief = block_reduce(self.robot_belief.copy(), block_size=(self.resolution, self.resolution),
@@ -72,8 +75,11 @@ class Env():
         reward = self.calculate_reward(dist, frontiers)
 
         self.visited_map[robot_position[1] - 2:robot_position[1] + 3,\
-                        robot_position[0] - 2:robot_position[0] + 3] = 1
+                        robot_position[0] - 2:robot_position[0] + 3] = 1 # for masking to update observation
+    
         self.visited = np.append(self.visited, [robot_position], axis=0) # can be faster?
+        self.targets = np.append(self.targets, [target_position], axis = 0)
+
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -106,7 +112,8 @@ class Env():
 
     def check_done(self):
         done = False
-        if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        # if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
             done = True
         return done
 
@@ -176,6 +183,8 @@ class Env():
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
+        plt.plot(self.targets[:, 0], self.targets[:, 1], 'r--', linewidth=2)
+        plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'rx', markersize=8)
         plt.plot(self.visited[:, 0], self.visited[:, 1], 'b', linewidth=2)
         plt.plot(self.visited[-1, 0], self.visited[-1, 1], 'mo', markersize=8)
         plt.plot(self.visited[0, 0], self.visited[0, 1], 'co', markersize=8)
