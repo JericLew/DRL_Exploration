@@ -3,7 +3,7 @@ from torch import nn
 
 class Flatten(nn.Module):
     def forward(self, x):
-        return x.view(-1)
+        return x.view(x.size(0), -1)
     
 # https://github.com/ikostrikov/pytorch-a2c-ppo-acktr-gail/blob/master/a2c_ppo_acktr/utils.py#L32
 class AddBias(nn.Module):

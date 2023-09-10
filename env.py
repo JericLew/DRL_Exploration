@@ -5,6 +5,8 @@ from skimage.measure import block_reduce
 import copy
 
 from sensor import *
+from graph_generator import *
+from node import *
 
 class Env():
     def __init__(self, map_index, k_size=20, plot=False, test=False):
@@ -31,6 +33,11 @@ class Env():
         self.sensor_range = 80
         self.explored_rate = 0
 
+        # initialize graph generator
+        self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
+        # self.graph_generator.route_node.append(self.start_position)
+        self.node_coords, self.graph, self.node_utility, self.guidepost = None, None, None, None
+
         self.frontiers = None
         self.visited_map = np.zeros(self.ground_truth_size)
         self.visited_map[self.start_position[1] - 2:self.start_position[1] + 3,\
@@ -44,6 +51,9 @@ class Env():
         self.plot = plot
         self.frame_files = []
 
+    def find_index_from_coords(self, position):
+        index = np.argmin(np.linalg.norm(self.node_coords - position, axis=1))
+        return index
 
     def begin(self):
         self.robot_belief = self.update_robot_belief(self.start_position, self.sensor_range, self.robot_belief,
@@ -55,13 +65,22 @@ class Env():
         self.frontiers = self.find_frontier()
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
+        self.node_coords, self.graph, self.node_utility, self.guidepost = self.graph_generator.generate_graph(
+            self.start_position, self.robot_belief, self.frontiers)
+
+
     def step(self, robot_position, next_position, target_position, travel_dist):
         # move the robot to the selected position and update its belief
         dist = np.linalg.norm(robot_position - next_position)
         travel_dist += dist
-        print(f"robot pos before {robot_position}")
+
+        # print(f"robot pos before {robot_position}")
         robot_position = next_position 
-        print(f"robot pos after {robot_position}")
+        # print(f"robot pos after {robot_position}")
+
+        # self.graph_generator.route_node.append(robot_position)
+        # next_node_index = self.find_index_from_coords(robot_position)
+        # self.graph_generator.nodes_list[next_node_index].set_visited()
 
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
@@ -80,6 +99,9 @@ class Env():
         self.visited = np.append(self.visited, [robot_position], axis=0) # can be faster?
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
+        # update the graph
+        self.node_coords, self.graph, self.node_utility, self.guidepost = self.graph_generator.update_graph(
+            robot_position, self.robot_belief, self.old_robot_belief, frontiers, self.frontiers)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -119,6 +141,12 @@ class Env():
 
     def calculate_reward(self, dist, frontiers):
         # TODO Modify this
+        # new_free_area = self.calculate_new_free_area()
+        # print(f"free area {new_free_area}")
+        # reward = new_free_area * 0.5 # TODO tune this
+        # print(f"rewards {reward}")
+
+        # Using old rewards now
         reward = 0
         reward -= dist / 64
 
@@ -130,19 +158,27 @@ class Env():
         delta_num = pre_frontiers_num - frontiers_num
 
         reward += delta_num / 50
+        # print(f"rewards {reward}")
 
         return reward
 
     def evaluate_exploration_rate(self):
         rate = np.sum(self.robot_belief == 255) / np.sum(self.ground_truth == 255)
         return rate
-
+    
     def calculate_new_free_area(self):
         old_free_area = self.old_robot_belief == 255
         current_free_area = self.robot_belief == 255
-        new_free_area = (current_free_area.astype(np.int) - old_free_area.astype(np.int)) * 255
+        new_free_area = (current_free_area.astype(np.int) - old_free_area.astype(np.int))
 
-        return new_free_area, np.sum(old_free_area)
+        return np.sum(new_free_area)
+    
+    # def calculate_new_free_area(self):
+    #     old_free_area = self.old_robot_belief == 255
+    #     current_free_area = self.robot_belief == 255
+    #     new_free_area = (current_free_area.astype(np.int) - old_free_area.astype(np.int)) * 255
+
+    #     return new_free_area, np.sum(old_free_area)
 
 
     def find_frontier(self):
@@ -182,9 +218,10 @@ class Env():
         plt.cla()
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
+        # plt.scatter(self.node_coords[:, 0], self.node_coords[:, 1], c=self.node_utility, zorder=5)
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
-        plt.plot(self.targets[:, 0], self.targets[:, 1], 'r--', linewidth=2)
-        plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'rx', markersize=8)
+        plt.plot(self.targets[-5:, 0], self.targets[-5:, 1], 'g--', linewidth=2)
+        plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'gx', markersize=8)
         plt.plot(self.visited[:, 0], self.visited[:, 1], 'b', linewidth=2)
         plt.plot(self.visited[-1, 0], self.visited[-1, 1], 'mo', markersize=8)
         plt.plot(self.visited[0, 0], self.visited[0, 1], 'co', markersize=8)
