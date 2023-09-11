@@ -74,9 +74,9 @@ class Env():
         dist = np.linalg.norm(robot_position - next_position)
         travel_dist += dist
 
-        # print(f"robot pos before {robot_position}")
+        print(f"robot pos before {robot_position}")
         robot_position = next_position 
-        # print(f"robot pos after {robot_position}")
+        print(f"robot pos after {robot_position}")
 
         # self.graph_generator.route_node.append(robot_position)
         # next_node_index = self.find_index_from_coords(robot_position)
@@ -158,7 +158,7 @@ class Env():
         delta_num = pre_frontiers_num - frontiers_num
 
         reward += delta_num / 50
-        # print(f"rewards {reward}")
+        print(f"rewards {reward}")
 
         return reward
 

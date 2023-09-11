@@ -145,7 +145,7 @@ class Worker:
 
         observations = self.get_observations()
         for i in range(self.max_timestep):
-            # print(f"\nstep: {i}")
+            print(f"\nstep: {i}")
             self.save_observations(observations)
             value, raw_action, action_log_probs = self.act(observations, self.network)
             self.save_action(raw_action, action_log_probs)
@@ -157,18 +157,20 @@ class Worker:
             local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
             lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
             target_position = np.array([int(post_sig_action[0][1] * 320 + lmb[2]), int(post_sig_action[0][0] * 240 + lmb[0])]) # [x,y]
-            # print(f"targ_pos {target_position}")
+            print(f"targ_pos {target_position}")
 
             # find closest node to target position
             target_node_index = self.env.find_index_from_coords(target_position)
             target_node_position = self.env.node_coords[target_node_index]
             # use a star to find shortest path to target node
             dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
-            if route == []: # remain at same pos if no path found
+            if route == []: # remain at same pos if destination same as target
+                next_position = self.robot_position
+            elif route == None: # can have a better way to do this, ie find closest point?
                 next_position = self.robot_position
             else:   # go to next node in path planned by a star
                 next_position = self.env.node_coords[int(route[1])]
-            # print(f"next_pos {next_position}")
+            print(f"next_pos {next_position}")
 
             reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             self.save_reward_done(reward, done)
@@ -217,6 +219,6 @@ class Worker:
 # ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
 # local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
 
-# global_policy = Global_Policy((8,240,320), 256)
-# worker = Worker(1, global_policy,save_image=False)
-# worker.work(1)
+global_policy = Global_Policy((8,240,320), 256)
+worker = Worker(19, global_policy,save_image=True)
+worker.work(19)

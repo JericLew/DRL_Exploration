@@ -102,9 +102,9 @@ class PPO ():
         batch_returns = []
         batch_episode_len = []
 
-        for _ in range(self.episode_per_batch): # TODO 128 *2 = 256 , timestep per batch
+        for _ in range(self.episode_per_batch):
             worker = Worker(epi_so_far, self.actor,\
-                            max_timestep = self.max_timesteps_per_episode,save_image=False)
+                            max_timestep = self.max_timesteps_per_episode,save_image=True)
             worker.work(epi_so_far)
             epi_so_far += 1
 
@@ -189,7 +189,7 @@ class PPO ():
         # Initialize default values for hyperparameters
         # Algorithm hyperparameters
         self.episode_per_batch = 2
-        self.max_timesteps_per_episode = 32           # Max number of timesteps per episode
+        self.max_timesteps_per_episode = 128           # Max number of timesteps per episode
         self.timesteps_per_batch =  self.episode_per_batch *\
             self.max_timesteps_per_episode               # Number of timesteps to run per batch
         self.n_updates_per_iteration = 5                # Number of times to update actor/critic per iteration
@@ -253,4 +253,4 @@ class PPO ():
         self.logger['actor_losses'] = []
 
 model = PPO(Global_Policy)
-model.learn(1280)
+model.learn(10000)
