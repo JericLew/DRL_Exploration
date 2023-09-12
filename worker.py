@@ -14,20 +14,18 @@ from network import Global_Policy
 from utils import DiagGaussian
 
 class Worker:
-    def __init__(self, global_step, network, max_timestep = 128, device='cuda', save_image=False):
-        self.device = device
-        self.global_step = global_step
+    def __init__(self, global_step, weights, device, save_image=False):
+        self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.k_size = K_SIZE
+        
+        self.global_step = global_step
+        self.device = device
+        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
+        self.actor.load_state_dict(weights)
+        self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
         self.save_image = save_image
-
-        self.max_timestep = max_timestep
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
 
-        self.network = network
-        self.dist = DiagGaussian(self.network.output_size, 2) # 256, 2
-        # 2 is from box environment defined, cos x and y coord vector space
-
-        # self.current_node_index = 0
         self.travel_dist = 0
         self.robot_position = self.env.start_position
 
@@ -37,11 +35,6 @@ class Worker:
         self.episode_rewards = []
         self.episode_returns = []
         self.episode_len = []
-        
-        # self.episode_buffer = [] # rollout
-        # self.perf_metrics = dict()
-        # for i in range(15):
-        #     self.episode_buffer.append([])
 
     def get_local_map_boundaries(self, robot_position, local_size, full_size):
         x_center, y_center = robot_position
@@ -76,9 +69,9 @@ class Worker:
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
         local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
         
-        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1])
-        local_map = torch.zeros(4, local_size[0], local_size[1])
-        observations = torch.zeros(8, local_size[0], local_size[1]) # (8,height,width)
+        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.device)
+        local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.device)
+        observations = torch.zeros(8, local_size[0], local_size[1]).to(self.device) # (8,height,width)
 
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
 
@@ -112,14 +105,14 @@ class Worker:
         # axes[2].imshow(local_map[2, : :], cmap='gray')
         # plt.savefig('output.png')
 
-        return observations
+        return observations.to(self.device)
     
-    def act(self, observations, network): # TODO change this
-        value, actor_features = network(observations.unsqueeze(0)) #add batch dimension
+    def act(self, observations, actor): # TODO change this
+        value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
         dist = self.dist(actor_features)
         action = dist.sample()
         action_log_probs = dist.log_probs(action)
-        return value, action.detach(), action_log_probs.detach()
+        return value, action, action_log_probs
 
     def save_observations(self, observations):
         self.episode_obs.append(observations)
@@ -131,23 +124,14 @@ class Worker:
     def save_reward_done(self, reward, done):
         self.episode_rewards.append(reward)
 
-    # def save_next_observations(self, observations):
-    #     node_inputs, edge_inputs, current_index, node_padding_mask, edge_padding_mask, edge_mask = observations
-    #     self.episode_buffer[9] += copy.deepcopy(node_inputs)
-    #     self.episode_buffer[10] += copy.deepcopy(edge_inputs)
-    #     self.episode_buffer[11] += copy.deepcopy(current_index)
-    #     self.episode_buffer[12] += copy.deepcopy(node_padding_mask)
-    #     self.episode_buffer[13] += copy.deepcopy(edge_padding_mask)
-    #     self.episode_buffer[14] += copy.deepcopy(edge_mask)
-
     def run_episode(self, curr_episode):
         done = False
 
         observations = self.get_observations()
         for i in range(self.max_timestep):
-            print(f"\nstep: {i}")
+            # print(f"\nstep: {i}")
             self.save_observations(observations)
-            value, raw_action, action_log_probs = self.act(observations, self.network)
+            value, raw_action, action_log_probs = self.act(observations, self.actor)
             self.save_action(raw_action, action_log_probs)
 
             # process actor output to target_position
@@ -157,7 +141,7 @@ class Worker:
             local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
             lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
             target_position = np.array([int(post_sig_action[0][1] * 320 + lmb[2]), int(post_sig_action[0][0] * 240 + lmb[0])]) # [x,y]
-            print(f"targ_pos {target_position}")
+            # print(f"targ_pos {target_position}")
 
             # find closest node to target position
             target_node_index = self.env.find_index_from_coords(target_position)
@@ -170,7 +154,7 @@ class Worker:
                 next_position = self.robot_position
             else:   # go to next node in path planned by a star
                 next_position = self.env.node_coords[int(route[1])]
-            print(f"next_pos {next_position}")
+            # print(f"next_pos {next_position}")
 
             reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             self.save_reward_done(reward, done)
@@ -219,6 +203,6 @@ class Worker:
 # ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
 # local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
 
-global_policy = Global_Policy((8,240,320), 256)
-worker = Worker(19, global_policy,save_image=True)
-worker.work(19)
+# global_policy = Global_Policy((8,240,320), 256)
+# worker = Worker(19, global_policy,save_image=True)
+# worker.work(19)

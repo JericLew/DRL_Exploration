@@ -6,21 +6,23 @@ import time
 from worker import Worker
 from network import Global_Policy
 from utils import DiagGaussian
-
+from parameter import *
 
 class PPO ():
-    def __init__(self, network, **hyperparameters):
-        # Initialize hyperparameters for training with PPO
-        self._init_hyperparameters(hyperparameters)
+    def __init__(self):
+        self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
+        self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
-        self.actor = network((8,240,320), hidden_size=256) # obs dimension and action post process
-        self.critic = network((8,240,320), hidden_size=256)
+        # initialize neural networks
+        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
+        self.critic = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
 
-        # Initialize optimizers for actor and critic
-        self.actor_optim = Adam(self.actor.parameters(), lr=self.lr)
-        self.critic_optim = Adam(self.critic.parameters(), lr=self.lr)
+        # Initialize optimizers
+        self.actor_optim = Adam(self.actor.parameters(), lr=LR)
+        self.critic_optim = Adam(self.critic.parameters(), lr=LR)
 
-        self.dist = DiagGaussian(self.actor.output_size, 2) # 256, 2
+        # Initialize distribution
+        self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
 
         # This logger will help us with printing out summaries of each iteration
         self.logger = {
@@ -33,8 +35,8 @@ class PPO ():
         }
             
     def learn(self, total_timesteps):
-        print(f"Learning... Running {self.max_timesteps_per_episode} timesteps per episode, ", end='')
-        print(f"{self.timesteps_per_batch} timesteps per batch for a total of {total_timesteps} timesteps")
+        print(f"Learning... Running {MAX_TIMESTEP_PER_EPISODE} timesteps per episode, ", end='')
+        print(f"{TIMESTEP_PER_BATCH} timesteps per batch for a total of {total_timesteps} timesteps")
         t_so_far = 0 # Timesteps simulated so far
         epi_so_far = 0
         i_so_far = 0 # Iterations ran so far
@@ -57,7 +59,9 @@ class PPO ():
             A_k = batch_returns - V.detach()   
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
-            for _ in range(self.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
+            # torch.cuda.empty_cache()
+
+            for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
                 # Calculate V_phi and pi_theta(a_t | s_t)
                 V, curr_log_probs = self.evaluate(batch_obs, batch_acts)
 
@@ -65,7 +69,7 @@ class PPO ():
 
                 # Calculate surrogate losses.
                 surr1 = ratios * A_k
-                surr2 = torch.clamp(ratios, 1 - self.clip, 1 + self.clip) * A_k
+                surr2 = torch.clamp(ratios, 1 - CLIP, 1 + CLIP) * A_k
 
                 # Calculate actor and critic losses.
                 actor_loss = (-torch.min(surr1, surr2)).mean()
@@ -88,12 +92,19 @@ class PPO ():
             self._log_summary()
 
             # Save our model if it's time
-            if i_so_far % self.save_freq == 0:
+            if i_so_far % SAVE_FREQ == 0:
                 torch.save(self.actor.state_dict(), './ppo_actor.pth')
                 torch.save(self.critic.state_dict(), './ppo_critic.pth')
 
 
     def rollout(self, epi_so_far):
+
+        if self.device != self.local_device:
+            policy_weights = self.actor.to(self.local_device).state_dict()
+            self.actor.to(self.device)
+        else:
+            policy_weights = self.actor.to(self.local_device).state_dict()
+        
         # batch data
         batch_obs = []
         batch_acts = []
@@ -102,9 +113,10 @@ class PPO ():
         batch_returns = []
         batch_episode_len = []
 
-        for _ in range(self.episode_per_batch):
-            worker = Worker(epi_so_far, self.actor,\
-                            max_timestep = self.max_timesteps_per_episode,save_image=True)
+        for _ in range(EPISODE_PER_BATCH):
+            save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
+
+            worker = Worker(epi_so_far, policy_weights, device=self.local_device, save_image=save_img)
             worker.work(epi_so_far)
             epi_so_far += 1
 
@@ -114,35 +126,10 @@ class PPO ():
             batch_rewards.append(worker.episode_rewards)
             batch_episode_len.append(worker.episode_len)
 
-        # t = 0
-
-        # while t < self.timesteps_per_batch:
-        #     epi_reward = [] 
-        #     obs = self.env.reset() # TODO implement this basically inital obs
-        #     done = False
-
-        #     for ep_t in range(self.max_timesteps_per_episode):
-        #         t += 1
-
-        #         batch_obs.append(obs)
-
-        #         action, log_prob = self.get_action(obs) # TODO implement
-        #         obs, reward, done = self.env.step(action) # TODO implement
-
-        #         epi_reward.append(reward)
-        #         batch_acts.append(action)
-        #         batch_log_probs.append(log_prob)
-
-        #         if done:
-        #             break
-
-        #     batch_episode_len.append(ep_t + 1) # +1 cos time step start from 0
-        #     batch_rewards.append(epi_reward)
-        
         # Reshape data as tensors in the shape specified in function description, before returning
-        batch_obs = torch.cat(batch_obs)
-        batch_acts = torch.cat(batch_acts)
-        batch_log_probs = torch.cat(batch_log_probs)
+        batch_obs = torch.cat(batch_obs).to(self.device)
+        batch_acts = torch.cat(batch_acts).to(self.device)
+        batch_log_probs = torch.cat(batch_log_probs).to(self.device)
         batch_returns = self.compute_returns(batch_rewards)
 
         # Log the episodic returns and episodic lengths in this batch.
@@ -164,11 +151,11 @@ class PPO ():
             # Iterate through all rewards in the episode. We go backwards for smoother calculation of each
             # discounted return (think about why it would be harder starting from the beginning)
             for rew in reversed(ep_rews):
-                discounted_reward = rew + discounted_reward * self.gamma
+                discounted_reward = rew + discounted_reward * GAMMA
                 batch_returns.insert(0, discounted_reward)
 
         # Convert the rewards-to-go into a tensor
-        batch_returns = torch.tensor(batch_returns, dtype=torch.float)
+        batch_returns = torch.tensor(batch_returns, dtype=torch.float).to(self.device)
 
         return batch_returns
 
@@ -184,38 +171,7 @@ class PPO ():
         # Return the value vector V of each observation in the batch
         # and log probabilities log_probs of each action in the batch
         return V, action_log_probs
-    
-    def _init_hyperparameters(self, hyperparameters):
-        # Initialize default values for hyperparameters
-        # Algorithm hyperparameters
-        self.episode_per_batch = 2
-        self.max_timesteps_per_episode = 128           # Max number of timesteps per episode
-        self.timesteps_per_batch =  self.episode_per_batch *\
-            self.max_timesteps_per_episode               # Number of timesteps to run per batch
-        self.n_updates_per_iteration = 5                # Number of times to update actor/critic per iteration
-        self.lr = 0.005                                 # Learning rate of actor optimizer
-        self.gamma = 0.95                               # Discount factor to be applied when calculating Rewards-To-Go
-        self.clip = 0.2                                 # Recommended 0.2, helps define the threshold to clip the ratio during SGA
-
-        # Miscellaneous parameters
-        self.render = True                              # If we should render during rollout
-        self.render_every_i = 10                        # Only render every n iterations
-        self.save_freq = 10                             # How often we save in number of iterations
-        self.seed = None                                # Sets the seed of our program, used for reproducibility of results
-
-        # Change any default values to custom values for specified hyperparameters
-        for param, val in hyperparameters.items():
-            exec('self.' + param + ' = ' + str(val))
-
-        # Sets the seed if specified
-        if self.seed != None:
-            # Check if our seed is valid first
-            assert(type(self.seed) == int)
-
-            # Set the seed 
-            torch.manual_seed(self.seed)
-            print(f"Successfully set seed to {self.seed}")
-               
+                   
     def _log_summary(self):
         # Calculate logging values. I use a few python shortcuts to calculate each value
         # without explaining since it's not too important to PPO; feel free to look it over,
@@ -229,12 +185,12 @@ class PPO ():
         i_so_far = self.logger['i_so_far']
         avg_ep_lens = np.mean(self.logger['batch_lens'])
         avg_ep_rews = np.mean([np.sum(ep_rews) for ep_rews in self.logger['batch_rews']])
-        avg_actor_loss = np.mean([losses.float().mean() for losses in self.logger['actor_losses']])
+        avg_actor_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['actor_losses']])
 
         # Round decimal places for more aesthetic logging messages
         avg_ep_lens = str(round(avg_ep_lens, 2))
         avg_ep_rews = str(round(avg_ep_rews, 2))
-        avg_actor_loss = str(round(avg_actor_loss, 5))
+        avg_actor_loss = str(round(avg_actor_loss, 10))
 
         # Print logging statements
         print(flush=True)
@@ -251,6 +207,3 @@ class PPO ():
         self.logger['batch_lens'] = []
         self.logger['batch_rews'] = []
         self.logger['actor_losses'] = []
-
-model = PPO(Global_Policy)
-model.learn(10000)
