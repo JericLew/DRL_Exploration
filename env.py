@@ -79,10 +79,6 @@ class Env():
         robot_position = next_position 
         # print(f"robot pos after {robot_position}")
 
-        # self.graph_generator.route_node.append(robot_position)
-        # next_node_index = self.find_index_from_coords(robot_position)
-        # self.graph_generator.nodes_list[next_node_index].set_visited()
-
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
         self.downsampled_belief = block_reduce(self.robot_belief.copy(), block_size=(self.resolution, self.resolution),
@@ -157,7 +153,6 @@ class Env():
         frontiers_num = np.intersect1d(frontiers_to_check, pre_frontiers_to_check).shape[0]
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
-
         reward += delta_num / 50
         # print(f"rewards {reward}")
 
@@ -173,14 +168,6 @@ class Env():
         new_free_area = (current_free_area.astype(np.int) - old_free_area.astype(np.int))
 
         return np.sum(new_free_area)
-    
-    # def calculate_new_free_area(self):
-    #     old_free_area = self.old_robot_belief == 255
-    #     current_free_area = self.robot_belief == 255
-    #     new_free_area = (current_free_area.astype(np.int) - old_free_area.astype(np.int)) * 255
-
-    #     return new_free_area, np.sum(old_free_area)
-
 
     def find_frontier(self):
         # find frontiers from downsampled_belief by checking nearby 8 cells for each cell

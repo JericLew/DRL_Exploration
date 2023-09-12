@@ -14,7 +14,7 @@ from network import Global_Policy
 from utils import DiagGaussian
 
 class Worker:
-    def __init__(self, global_step, weights, device, save_image=False):
+    def __init__(self, global_step, weights, dist, device, save_image=False):
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.k_size = K_SIZE
         
@@ -22,7 +22,7 @@ class Worker:
         self.device = device
         self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
         self.actor.load_state_dict(weights)
-        self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
+        self.dist = dist
         self.save_image = save_image
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
 
@@ -104,25 +104,38 @@ class Worker:
         # axes[1].imshow(global_map[2, : :], cmap='gray') 
         # axes[2].imshow(local_map[2, : :], cmap='gray')
         # plt.savefig('output.png')
-
-        return observations.to(self.device)
+        return observations
     
-    def act(self, observations, actor): # TODO change this
-        value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
-        dist = self.dist(actor_features)
-        action = dist.sample()
-        action_log_probs = dist.log_probs(action)
+    def act(self, observations, actor): # TODO detach returns
+        with torch.no_grad():
+            value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
+            dist = self.dist(actor_features)
+            action = dist.sample().squeeze() # squeeze because it was made for multibatch input
+            action_log_probs = dist.log_probs(action).squeeze()
         return value, action, action_log_probs
 
     def save_observations(self, observations):
         self.episode_obs.append(observations)
 
-    def save_action(self, raw_action, action_log_probs):
-        self.episode_acts.append(raw_action)
+    def save_action(self, action_features, action_log_probs):
+        self.episode_acts.append(action_features)
         self.episode_log_probs.append(action_log_probs)
 
     def save_reward_done(self, reward, done):
         self.episode_rewards.append(reward)
+
+
+    def find_target_pos(self, action_features):
+        with torch.no_grad():
+                # process actor output to target_position
+                post_sig_action = nn.Sigmoid()(action_features).cpu().numpy()
+                # print(f"post_sig_action {post_sig_action}")
+        ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
+        local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
+        lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
+        target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
+        # print(f"targ_pos {target_position}")
+        return target_position
 
     def run_episode(self, curr_episode):
         done = False
@@ -131,26 +144,22 @@ class Worker:
         for i in range(self.max_timestep):
             # print(f"\nstep: {i}")
             self.save_observations(observations)
-            value, raw_action, action_log_probs = self.act(observations, self.actor)
-            self.save_action(raw_action, action_log_probs)
+            value, action_features, action_log_probs = self.act(observations, self.actor)
+            self.save_action(action_features, action_log_probs)
 
-            # process actor output to target_position
-            post_sig_action = nn.Sigmoid()(raw_action).cpu().numpy()
-            # print(f"post_sig_action {post_sig_action}")
-            ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-            local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
-            lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
-            target_position = np.array([int(post_sig_action[0][1] * 320 + lmb[2]), int(post_sig_action[0][0] * 240 + lmb[0])]) # [x,y]
-            # print(f"targ_pos {target_position}")
-
+            # find target position from action features
+            target_position = self.find_target_pos(action_features)
             # find closest node to target position
             target_node_index = self.env.find_index_from_coords(target_position)
+            # find coordinates of target nod
             target_node_position = self.env.node_coords[target_node_index]
+
             # use a star to find shortest path to target node
             dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
             if route == []: # remain at same pos if destination same as target
                 next_position = self.robot_position
-            elif route == None: # can have a better way to do this, ie find closest point?
+            # NOTE can have a better way to do this, ie find closest point?
+            elif route == None: # IF unreachable, stay at the same place
                 next_position = self.robot_position
             else:   # go to next node in path planned by a star
                 next_position = self.env.node_coords[int(route[1])]
@@ -160,7 +169,6 @@ class Worker:
             self.save_reward_done(reward, done)
 
             observations = self.get_observations()
-            # self.save_next_observations(observations)
 
             # save a frame
             if self.save_image:

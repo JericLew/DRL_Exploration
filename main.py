@@ -22,6 +22,6 @@ def train():
     # else:
     print(f"Training from scratch.", flush=True)
 
-    model.learn(12800)
+    model.learn(1000000)
 
 train()

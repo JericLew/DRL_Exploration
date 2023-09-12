@@ -42,6 +42,7 @@ class PPO ():
         i_so_far = 0 # Iterations ran so far
 
         while t_so_far < total_timesteps:
+
             batch_obs, batch_acts, batch_log_probs, batch_returns, batch_episode_len, epi_so_far = self.rollout(epi_so_far)
             
             # Calculate how many timesteps we collected this batch
@@ -59,14 +60,17 @@ class PPO ():
             A_k = batch_returns - V.detach()   
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
-            # torch.cuda.empty_cache()
-
+            # print(f"V iter {V.size()}")
+            # print(f"A_k iter {A_k.size()}")
+            # print(f"log_prob iter {batch_log_probs.size()}") # weird shape
+            # print(f"batch_returns iter {batch_returns.size()}")
+            
             for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
                 # Calculate V_phi and pi_theta(a_t | s_t)
                 V, curr_log_probs = self.evaluate(batch_obs, batch_acts)
+                # print(f"V curr {V}")
 
                 ratios = torch.exp(curr_log_probs - batch_log_probs)
-
                 # Calculate surrogate losses.
                 surr1 = ratios * A_k
                 surr2 = torch.clamp(ratios, 1 - CLIP, 1 + CLIP) * A_k
@@ -96,7 +100,6 @@ class PPO ():
                 torch.save(self.actor.state_dict(), './ppo_actor.pth')
                 torch.save(self.critic.state_dict(), './ppo_critic.pth')
 
-
     def rollout(self, epi_so_far):
 
         if self.device != self.local_device:
@@ -116,7 +119,7 @@ class PPO ():
         for _ in range(EPISODE_PER_BATCH):
             save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
 
-            worker = Worker(epi_so_far, policy_weights, device=self.local_device, save_image=save_img)
+            worker = Worker(epi_so_far, policy_weights, dist=self.dist, device=self.local_device, save_image=save_img)
             worker.work(epi_so_far)
             epi_so_far += 1
 
