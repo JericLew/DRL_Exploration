@@ -159,7 +159,7 @@ class Env():
         reward += delta_num / 25
         # print(f"rewards {reward}")
 
-        return reward
+        return reward/10
 
     def evaluate_exploration_rate(self):
         rate = np.sum(self.robot_belief == 255) / np.sum(self.ground_truth == 255)
