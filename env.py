@@ -16,7 +16,7 @@ class Env():
             self.map_dir = f'DungeonMaps/test'  # change to 'complex', 'medium', and 'easy'
         else:
             # self.map_dir = f'DungeonMaps/train'
-            self.map_dir = f'DungeonMaps/mini-train'
+            self.map_dir = f'DungeonMaps/train'
         self.map_list = os.listdir(self.map_dir)
         self.map_list.sort(reverse=True)
         self.map_index = map_index % np.size(self.map_list)
@@ -36,7 +36,6 @@ class Env():
 
         # initialize graph generator
         self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
-        # self.graph_generator.route_node.append(self.start_position)
         self.node_coords, self.graph, self.node_utility, self.guidepost = None, None, None, None
 
         self.frontiers = None
@@ -75,6 +74,7 @@ class Env():
         dist = np.linalg.norm(robot_position - next_position)
         travel_dist += dist
 
+        same_position = robot_position == next_position
         # print(f"robot pos before {robot_position}")
         robot_position = next_position 
         # print(f"robot pos after {robot_position}")
@@ -88,7 +88,7 @@ class Env():
         self.explored_rate = self.evaluate_exploration_rate()
 
         # calculate the reward associated with the action
-        reward = self.calculate_reward(dist, frontiers)
+        reward = self.calculate_reward(dist, frontiers, same_position)
 
         self.visited_map[robot_position[1] - 2:robot_position[1] + 3,\
                         robot_position[0] - 2:robot_position[0] + 3] = 1 # for masking to update observation
@@ -136,7 +136,7 @@ class Env():
             done = True
         return done
 
-    def calculate_reward(self, dist, frontiers):
+    def calculate_reward(self, dist, frontiers, same_position):
         # TODO Modify this
         # new_free_area = self.calculate_new_free_area()
         # print(f"free area {new_free_area}")
@@ -147,13 +147,16 @@ class Env():
         reward = 0
         reward -= dist / 64
 
+        if same_position.all():
+            reward -= 5
+
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
         pre_frontiers_to_check = self.frontiers[:, 0] + self.frontiers[:, 1] * 1j
         frontiers_num = np.intersect1d(frontiers_to_check, pre_frontiers_to_check).shape[0]
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
-        reward += delta_num / 50
+        reward += delta_num / 25
         # print(f"rewards {reward}")
 
         return reward

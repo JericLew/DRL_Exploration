@@ -22,6 +22,10 @@ class PPO ():
         self.critic_optim = Adam(self.critic.parameters(), lr=LR)
 
         # Initialize distribution
+        # Initialize the covariance matrix used to query the actor for actions
+        # self.cov_var = torch.full(size=(2,), fill_value=0.5)
+        # self.cov_mat = torch.diag(self.cov_var)
+        # self.dist = torch.distributions.MultivariateNormal
         self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
 
         # This logger will help us with printing out summaries of each iteration
@@ -56,7 +60,8 @@ class PPO ():
             self.logger['i_so_far'] = i_so_far
             
             # Calculate advantage at k-th iteration
-            V, _ = self.evaluate(batch_obs, batch_acts)
+            with torch.no_grad():
+                V, _ = self.evaluate(batch_obs, batch_acts)
             A_k = batch_returns - V.detach()   
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
@@ -119,15 +124,16 @@ class PPO ():
         for _ in range(EPISODE_PER_BATCH):
             save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
 
-            worker = Worker(epi_so_far, policy_weights, dist=self.dist, device=self.local_device, save_image=save_img)
+            worker = Worker(epi_so_far, policy_weights, dist=self.dist, save_image=save_img)
             worker.work(epi_so_far)
             epi_so_far += 1
 
-            batch_obs.append(torch.stack(worker.episode_obs))
-            batch_acts.append(torch.stack(worker.episode_acts))
-            batch_log_probs.append(torch.stack(worker.episode_log_probs))
-            batch_rewards.append(worker.episode_rewards)
-            batch_episode_len.append(worker.episode_len)
+            with torch.no_grad():  # Apply no_grad to optimize memory usage
+                batch_obs.append(torch.stack(worker.episode_obs))
+                batch_acts.append(torch.stack(worker.episode_acts))
+                batch_log_probs.append(torch.stack(worker.episode_log_probs))
+                batch_rewards.append(worker.episode_rewards)
+                batch_episode_len.append(worker.episode_len)
 
         # Reshape data as tensors in the shape specified in function description, before returning
         batch_obs = torch.cat(batch_obs).to(self.device)
@@ -158,12 +164,14 @@ class PPO ():
                 batch_returns.insert(0, discounted_reward)
 
         # Convert the rewards-to-go into a tensor
-        batch_returns = torch.tensor(batch_returns, dtype=torch.float).to(self.device)
+        with torch.no_grad():
+            batch_returns = torch.tensor(batch_returns, dtype=torch.float).to(self.device)
 
         return batch_returns
 
     def evaluate(self, batch_obs, batch_acts):
         # Query critic network for a value V for each batch_obs. Shape of V should be same as batch_rtgs
+        # with torch.no_grad():
         V, _ = self.critic(batch_obs)
 
         # Calculate the log probabilities of batch actions using most recent actor network.

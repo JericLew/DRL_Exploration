@@ -228,6 +228,8 @@ class Graph_generator:
         route, dist = a_star(int(start_node), int(end_node), self.node_coords, self.graph)
         if start_node != end_node:
             assert route != []
+        if route == None:
+            return dist, route
         route = list(map(str, route))
         return dist, route
 

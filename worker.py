@@ -14,15 +14,18 @@ from network import Global_Policy
 from utils import DiagGaussian
 
 class Worker:
-    def __init__(self, global_step, weights, dist, device, save_image=False):
+    def __init__(self, global_step, weights, dist, save_image=False):
+        self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
+        self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
+
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.k_size = K_SIZE
         
         self.global_step = global_step
-        self.device = device
-        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
+        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.local_device)
         self.actor.load_state_dict(weights)
         self.dist = dist
+        # self.dist = DiagGaussian(self.actor.output_size, 2).to(self.local_device) # 256, 2
         self.save_image = save_image
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
 
@@ -69,9 +72,9 @@ class Worker:
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
         local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
         
-        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.device)
-        local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.device)
-        observations = torch.zeros(8, local_size[0], local_size[1]).to(self.device) # (8,height,width)
+        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.local_device)
+        local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.local_device)
+        observations = torch.zeros(8, local_size[0], local_size[1]).to(self.local_device) # (8,height,width)
 
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
 
@@ -95,8 +98,9 @@ class Worker:
         
         local_map = global_map[:, lmb[0]:lmb[1], lmb[2]:lmb[3]] # (width,height)
 
-        observations[0:4, :, :] = local_map
+        observations[0:4, :, :] = local_map.detach()
         observations[4:, :, :] = nn.MaxPool2d(2)(global_map)
+        # TODO magic number (but is a pooling from algo)
 
         # # map check uncomment to check output of observation
         # fig, axes = plt.subplots(1, 3, figsize=(10, 5))
@@ -106,13 +110,13 @@ class Worker:
         # plt.savefig('output.png')
         return observations
     
-    def act(self, observations, actor): # TODO detach returns
+    def act(self, observations, actor):
         with torch.no_grad():
             value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
-            dist = self.dist(actor_features)
+            dist = self.dist(actor_features.to(self.device))
             action = dist.sample().squeeze() # squeeze because it was made for multibatch input
             action_log_probs = dist.log_probs(action).squeeze()
-        return value, action, action_log_probs
+        return value, action.detach(), action_log_probs.detach()
 
     def save_observations(self, observations):
         self.episode_obs.append(observations)
