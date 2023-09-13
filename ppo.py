@@ -95,6 +95,7 @@ class PPO ():
                 actor_loss = (-torch.min(surr1, surr2)).mean()
                 critic_loss = nn.MSELoss()(V, batch_returns)
 
+
                 actor_critic_loss = actor_loss
                 # actor_critic_loss = critic_loss * CRITIC_LOSS_COEF +\
                 #     actor_loss - dist_entropy * ENTROPY_COEF
