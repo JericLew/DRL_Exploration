@@ -128,7 +128,7 @@ class PPO ():
 
         # Loop to collect multiple episode data for a batch
         for _ in range(EPISODE_PER_BATCH):
-            save_img = False if epi_so_far % SAVE_IMG_GAP == 0 else False
+            save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
 
             # Initialise Worker and run simulation
             worker = Worker(epi_so_far, actor_critic_weights, save_image=save_img)

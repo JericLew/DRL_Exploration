@@ -18,7 +18,7 @@ K_SIZE = 20  # the number of neighboring nodes
 
 '''PPO HYPERPARAMETERS'''
 EPISODE_PER_BATCH = 2 # default 2
-MAX_TIMESTEP_PER_EPISODE = 32 # Max number of timesteps per episode default 128
+MAX_TIMESTEP_PER_EPISODE = 128 # Max number of timesteps per episode default 128
 TIMESTEP_PER_BATCH =  EPISODE_PER_BATCH * MAX_TIMESTEP_PER_EPISODE # Number of timesteps to run per batch
 N_UPDATES_PER_ITERATIONS = 5 # Number of times to update actor/critic per iteration
 LR = 1e-5 # Learning rate of actor optimizer
