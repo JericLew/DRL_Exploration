@@ -10,8 +10,7 @@ import torch.nn as nn
 from env import Env
 from parameter import *
 
-from network import Global_Policy 
-from utils import DiagGaussian
+from network import RL_Policy
 
 class Worker:
     def __init__(self, global_step, weights, save_image=False):
@@ -22,15 +21,9 @@ class Worker:
         self.k_size = K_SIZE
         
         self.global_step = global_step
-        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.local_device)
-        self.actor.load_state_dict(weights)
-
-        # Initialize distribution
-        # Initialize the covariance matrix used to query the actor for actions
-        self.cov_var = torch.full(size=(2,), fill_value=0.5).to(self.local_device)
-        self.cov_mat = torch.diag(self.cov_var).to(self.local_device)
-        self.dist = torch.distributions.MultivariateNormal
-        # self.dist = DiagGaussian(self.actor.output_size, 2).to(self.local_device) # 256, 2
+        
+        self.actor_critic = RL_Policy(INPUT_DIM, 2).to(self.local_device)
+        self.actor_critic.load_state_dict(weights)
 
         self.save_image = save_image
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
@@ -111,36 +104,26 @@ class Worker:
         # # map check uncomment to check output of observation
         # fig, axes = plt.subplots(1, 3, figsize=(10, 5))
         # axes[0].imshow(robot_belief, cmap='gray')
-        # axes[1].imshow(global_map[2, : :], cmap='gray') 
-        # axes[2].imshow(local_map[2, : :], cmap='gray')
+        # axes[1].imshow(global_map[3, : :], cmap='gray') 
+        # axes[2].imshow(local_map[3, : :], cmap='gray')
         # plt.savefig('output.png')
         return observations
     
-    def act(self, observations, actor):
-        with torch.no_grad():
-            value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
-            dist = self.dist(actor_features, self.cov_mat)
-            action = dist.sample().squeeze() # squeeze because it was made for multibatch input
-            action_log_probs = dist.log_prob(action).squeeze()
-            # print(f"action {action}")
-            # print(f"logprobs {action_log_probs}")
-        return value, action.detach(), action_log_probs.detach()
-
     def save_observations(self, observations):
         self.episode_obs.append(observations)
 
-    def save_action(self, action_features, action_log_probs):
-        self.episode_acts.append(action_features)
+    def save_action(self, action, action_log_probs):
+        self.episode_acts.append(action)
         self.episode_log_probs.append(action_log_probs)
 
     def save_reward_done(self, reward, done):
         self.episode_rewards.append(reward)
 
 
-    def find_target_pos(self, action_features):
+    def find_target_pos(self, action):
         with torch.no_grad():
                 # process actor output to target_position
-                post_sig_action = nn.Sigmoid()(action_features).cpu().numpy()
+                post_sig_action = nn.Sigmoid()(action).cpu().numpy()
                 # print(f"post_sig_action {post_sig_action}")
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
         local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
@@ -156,11 +139,11 @@ class Worker:
         for i in range(self.max_timestep):
             # print(f"\nstep: {i}")
             self.save_observations(observations)
-            value, action_features, action_log_probs = self.act(observations, self.actor)
-            self.save_action(action_features, action_log_probs)
+            value, action, action_log_probs = self.actor_critic.act(observations)
+            self.save_action(action, action_log_probs)
 
             # find target position from action features
-            target_position = self.find_target_pos(action_features)
+            target_position = self.find_target_pos(action)
             # find closest node to target position
             target_node_index = self.env.find_index_from_coords(target_position)
             # find coordinates of target nod

@@ -8,7 +8,7 @@ avg_critic_loss = []
 avg_episodic_return = []
 
 # Open and read the CSV file
-with open('iteration_data_2023_09_13_1227.csv', mode='r') as file:
+with open('iteration_data_2023_09_13_1835.csv', mode='r') as file:
     reader = csv.DictReader(file)
     for row in reader:
         iterations.append(int(row['Iteration']))

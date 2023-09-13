@@ -8,8 +8,7 @@ import time
 import csv
 
 from worker import Worker
-from network import Global_Policy
-from utils import DiagGaussian
+from network import RL_Policy
 from parameter import *
 
 class PPO ():
@@ -18,19 +17,10 @@ class PPO ():
         self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
         # initialize neural networks
-        self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
-        self.critic = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.device)
+        self.actor_critic = RL_Policy(INPUT_DIM, 2).to(self.device)
 
         # Initialize optimizers
-        self.actor_optim = Adam(self.actor.parameters(), lr=LR)
-        self.critic_optim = Adam(self.critic.parameters(), lr=LR)
-
-        # Initialize distribution
-        # Initialize the covariance matrix used to query the actor for actions
-        self.cov_var = torch.full(size=(2,), fill_value=0.5).to(self.device)
-        self.cov_mat = torch.diag(self.cov_var).to(self.device)
-        self.dist = torch.distributions.MultivariateNormal
-        # self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
+        self.actor_critic_optim = Adam(self.actor_critic.parameters(), lr=LR, eps=1e-5)
 
         # init csv
         timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H%M')  # Get the current timestamp
@@ -67,7 +57,7 @@ class PPO ():
 
         while t_so_far < total_timesteps:
 
-            batch_obs, batch_acts, batch_log_probs, batch_returns, batch_episode_len, epi_so_far = self.rollout(epi_so_far)
+            batch_obs, batch_acts, batch_returns, batch_episode_len, epi_so_far = self.rollout(epi_so_far)
             
             # Calculate how many timesteps we collected this batch
             t_so_far += np.sum(batch_episode_len)
@@ -80,22 +70,24 @@ class PPO ():
             self.logger['i_so_far'] = i_so_far
             
             # Calculate advantage at k-th iteration
-            with torch.no_grad():
-                V, _ = self.evaluate(batch_obs, batch_acts)
+            V, batch_log_probs, dist_entropy = self.actor_critic.evaluate(batch_obs, batch_acts)
             A_k = batch_returns - V.detach()   
-            A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
+            # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+
+            print(A_k)
+            # torch.nn.utils.grad_norm to check grad NOTE
 
             # print(f"V iter {V.size()}")
             # print(f"A_k iter {A_k.size()}")
-            # print(f"log_prob iter {batch_log_probs.size()}")
+            # print(f"log_prob batch {batch_log_probs}")
             # print(f"batch_returns iter {batch_returns.size()}")
             
             for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
                 # Calculate V_phi and pi_theta(a_t | s_t)
-                V, curr_log_probs = self.evaluate(batch_obs, batch_acts)
+                V, curr_log_probs, dist_entropy = self.actor_critic.evaluate(batch_obs, batch_acts)
 
-                ratios = torch.exp(curr_log_probs - batch_log_probs)
                 # Calculate surrogate losses.
+                ratios = torch.exp(curr_log_probs - batch_log_probs)
                 surr1 = ratios * A_k
                 surr2 = torch.clamp(ratios, 1 - CLIP, 1 + CLIP) * A_k
 
@@ -103,16 +95,30 @@ class PPO ():
                 actor_loss = (-torch.min(surr1, surr2)).mean()
                 critic_loss = nn.MSELoss()(V, batch_returns)
 
+                actor_critic_loss = actor_loss
+                # actor_critic_loss = critic_loss * CRITIC_LOSS_COEF +\
+                #     actor_loss - dist_entropy * ENTROPY_COEF
+                
+                # print(f"curr_log_probs grad: {curr_log_probs.requires_grad}")
+                # print(f"batch_log_probs grad: {batch_log_probs.requires_grad}")
+                # print(f"V grad: {V.requires_grad}")
+                # print(f"A_k grad: {A_k.requires_grad}")
+                # print(f"ratios grad: {ratios.requires_grad}")
+                # print(f"actor loss grad: {actor_loss.requires_grad}")
+                # print(f"critic loss grad: {critic_loss.requires_grad}")
+                # print(f"dist entropy grad: {dist_entropy.requires_grad}")
+                # print(f"actor critic loss grad: {actor_critic_loss.requires_grad}")
+                
                 # Calculate gradients and perform backward propagation for actor network
-                self.actor_optim.zero_grad()
-                actor_loss.backward(retain_graph=True)
-                self.actor_optim.step()
+                self.actor_critic_optim.zero_grad()
+                actor_critic_loss.backward(retain_graph=True)
+                self.actor_critic_optim.step()
 
-                # Calculate gradients and perform backward propagation for critic network
-                self.critic_optim.zero_grad()
-                critic_loss.backward()
-                self.critic_optim.step()
-
+                # Check gradients
+                for name, param in self.actor_critic.named_parameters():
+                    if param.grad is not None:
+                        print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
+                
                 # Log actor loss
                 self.logger['actor_losses'].append(actor_loss.detach())
                 self.logger['critic_losses'].append(critic_loss.detach())
@@ -122,50 +128,46 @@ class PPO ():
 
             # Save our model if it's time
             if i_so_far % SAVE_FREQ == 0:
-                torch.save(self.actor.state_dict(), './ppo_actor.pth')
-                torch.save(self.critic.state_dict(), './ppo_critic.pth')
+                torch.save(self.actor_critic.state_dict(), './ppo_actor_critic.pth')
 
     def rollout(self, epi_so_far):
 
         if self.device != self.local_device:
-            policy_weights = self.actor.to(self.local_device).state_dict()
-            self.actor.to(self.device)
+            actor_critic_weights = self.actor_critic.to(self.local_device).state_dict()
+            self.actor_critic.to(self.device)
         else:
-            policy_weights = self.actor.to(self.local_device).state_dict()
+            actor_critic_weights = self.actor_critic.to(self.local_device).state_dict()
         
         # batch data
         batch_obs = []
         batch_acts = []
-        batch_log_probs = []
         batch_rewards = []
         batch_returns = []
         batch_episode_len = []
 
         for _ in range(EPISODE_PER_BATCH):
-            save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
+            save_img = False if epi_so_far % SAVE_IMG_GAP == 0 else False
 
-            worker = Worker(epi_so_far, policy_weights, save_image=save_img)
+            worker = Worker(epi_so_far, actor_critic_weights, save_image=save_img)
             worker.work(epi_so_far)
             epi_so_far += 1
 
             with torch.no_grad():  # Apply no_grad to optimize memory usage
                 batch_obs.append(torch.stack(worker.episode_obs))
                 batch_acts.append(torch.stack(worker.episode_acts))
-                batch_log_probs.append(torch.stack(worker.episode_log_probs))
                 batch_rewards.append(worker.episode_rewards)
                 batch_episode_len.append(worker.episode_len)
-
+        
         # Reshape data as tensors in the shape specified in function description, before returning
         batch_obs = torch.cat(batch_obs).to(self.device)
         batch_acts = torch.cat(batch_acts).to(self.device)
-        batch_log_probs = torch.cat(batch_log_probs).to(self.device)
         batch_returns = self.compute_returns(batch_rewards)
 
         # Log the episodic returns and episodic lengths in this batch.
         self.logger['batch_rews'] = batch_rewards
         self.logger['batch_lens'] = batch_episode_len
 
-        return batch_obs, batch_acts, batch_log_probs, batch_returns, batch_episode_len, epi_so_far
+        return batch_obs, batch_acts, batch_returns, batch_episode_len, epi_so_far
 
     def compute_returns(self,batch_rewards):
         # The returns per episode per batch to return.
@@ -184,24 +186,10 @@ class PPO ():
                 batch_returns.insert(0, discounted_reward)
 
         # Convert the rewards-to-go into a tensor
-        with torch.no_grad():
-            batch_returns = torch.tensor(batch_returns, dtype=torch.float).to(self.device)
+        # with torch.no_grad():
+        batch_returns = torch.tensor(batch_returns, dtype=torch.float).to(self.device)
 
         return batch_returns
-
-    def evaluate(self, batch_obs, batch_acts):
-        # Query critic network for a value V for each batch_obs. Shape of V should be same as batch_rtgs
-        # with torch.no_grad():
-        V, _ = self.critic(batch_obs)
-
-        # Calculate the log probabilities of batch actions using most recent actor network.
-        # This segment of code is similar to that in get_action()
-        _, actor_features = self.actor(batch_obs)
-        dist = self.dist(actor_features, self.cov_mat)
-        action_log_probs = dist.log_prob(batch_acts)
-        # Return the value vector V of each observation in the batch
-        # and log probabilities log_probs of each action in the batch
-        return V, action_log_probs
                    
     def _log_summary(self):
         # Calculate logging values. I use a few python shortcuts to calculate each value

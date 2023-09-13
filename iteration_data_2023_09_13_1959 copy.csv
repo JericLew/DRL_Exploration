@@ -1,0 +1,2 @@
+Iteration,Average Episodic Length,Average Episodic Return,Average Actor Loss,Average Critic Loss,Timesteps So Far,Iteration Time (secs)
+1,32.0,-1.92,0.77793133,0.78531724,32,10.48
