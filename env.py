@@ -25,12 +25,12 @@ class Env():
         self.ground_truth_size = np.shape(self.ground_truth)  # (480, 640)
 
         # initialize robot_belief
-        self.robot_belief = np.ones(self.ground_truth_size) * 127  # unexplored 127
+        self.robot_belief = np.ones(self.ground_truth_size) * 127  # Unexplored = 127
         self.downsampled_belief = None
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
         # initialize parameters
-        self.resolution = 4  # to downsample the map
+        self.resolution = 4 # to downsample the map for frontier
         self.sensor_range = 80
         self.explored_rate = 0
 
@@ -137,13 +137,12 @@ class Env():
         return done
 
     def calculate_reward(self, dist, frontiers, same_position):
-        # TODO Modify this
+        # TODO Modify this TODO Tune this
         # new_free_area = self.calculate_new_free_area()
         # print(f"free area {new_free_area}")
-        # reward = new_free_area * 0.5 # TODO tune this
+        # reward = new_free_area * 0.5 # 
         # print(f"rewards {reward}")
 
-        # Using old rewards now
         reward = 0
         reward -= dist / 64
 
@@ -157,7 +156,6 @@ class Env():
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
         reward += delta_num / 25
-        # print(f"rewards {reward}")
 
         return reward/10
 

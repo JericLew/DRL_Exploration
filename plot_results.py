@@ -1,5 +1,11 @@
 import csv
+import argparse
 import matplotlib.pyplot as plt
+
+# Arguement parser
+parser = argparse.ArgumentParser(description="Script to plot loss and returns graph")
+parser.add_argument("csv_path", type=str, help="path to csv file")
+args = parser.parse_args()
 
 # Initialize empty lists to store data
 iterations = []
@@ -8,7 +14,7 @@ avg_critic_loss = []
 avg_episodic_return = []
 
 # Open and read the CSV file
-with open('iteration_data_2023_09_13_1835.csv', mode='r') as file:
+with open(args.csv_path, mode='r') as file:
     reader = csv.DictReader(file)
     for row in reader:
         iterations.append(int(row['Iteration']))
@@ -42,7 +48,7 @@ axes[2].legend()
 plt.tight_layout()
 
 # Save the plot as a PNG file
-plt.savefig('your_output_plot.png')
+plt.savefig('loss-graph.png')
 
 # Show the plot
 plt.show()

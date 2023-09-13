@@ -14,23 +14,26 @@ from network import RL_Policy
 
 class Worker:
     def __init__(self, global_step, weights, save_image=False):
+        # Handle devices for global training and local simulation
         self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
         self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
-        self.max_timestep = MAX_TIMESTEP_PER_EPISODE
-        self.k_size = K_SIZE
-        
-        self.global_step = global_step
-        
+        # Initialise local actor critic for simulation
         self.actor_critic = RL_Policy(INPUT_DIM, 2).to(self.local_device)
         self.actor_critic.load_state_dict(weights)
-
+        
+        # Initalise simulation environment
+        self.global_step = global_step
+        self.k_size = K_SIZE
+        self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.save_image = save_image
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
 
+        # Initialise varibles
         self.travel_dist = 0
-        self.robot_position = self.env.start_position
+        self.robot_position = self.env.start_position  
 
+        # Episode buffer
         self.episode_obs = []
         self.episode_acts = []
         self.episode_log_probs = []
@@ -38,6 +41,7 @@ class Worker:
         self.episode_returns = []
         self.episode_len = []
 
+    # Function to get corner coords for robot local area
     def get_local_map_boundaries(self, robot_position, local_size, full_size):
         x_center, y_center = robot_position
         local_h, local_w = local_size
@@ -59,17 +63,19 @@ class Worker:
 
         return y_start, y_end, x_start, x_end, local_robot_y, local_robot_x
 
-    def get_observations(self): # get 8 x g x g input for model
+    # Retrieve observation with shape (8 x Local H x Local W)
+    def get_observations(self):
         # observation[0, :, :] probability of obstacle
         # observation[1, :, :] probability of exploration
         # observation[2, :, :] indicator of current position
         # observation[3, :, :] indicator of visited
 
-        # TODO make it less computationally intensive (update local only then patch on global)
+        # TODO make it less computationally intensive
         robot_belief = copy.deepcopy(self.env.robot_belief)
         visited_map = copy.deepcopy(self.env.visited_map)
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-        local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
+        local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR), \
+                      int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR)) # (h,w)
         
         global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.local_device)
         local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.local_device)
@@ -83,7 +89,7 @@ class Worker:
         mask_unkn = (robot_belief == 127) # if colour 127: index 0 = 0, index 1 = 0 unkw
         mask_visi = (visited_map == 1) # if visited: index : 3 = 1 vist
 
-        # Update robot_belief based on the masks
+        # Update global map based on the masks
         global_map[0, mask_obst] = 1
         global_map[1, mask_obst] = 1
         global_map[0, mask_free] = 0
@@ -92,14 +98,12 @@ class Worker:
         global_map[1, mask_unkn] = 0
         global_map[3, mask_visi] = 1
         global_map[2, self.robot_position[1] - 2:self.robot_position[1] + 3, \
-                    self.robot_position[0] - 2:self.robot_position[0] + 3] = 1
-                    # if robot_y and robot_x: index 2 = 1 
+                    self.robot_position[0] - 2:self.robot_position[0] + 3] = 1 
         
         local_map = global_map[:, lmb[0]:lmb[1], lmb[2]:lmb[3]] # (width,height)
 
         observations[0:4, :, :] = local_map.detach()
-        observations[4:, :, :] = nn.MaxPool2d(2)(global_map)
-        # TODO magic number (but is a pooling from algo)
+        observations[4:, :, :] = nn.MaxPool2d(MAP_DOWNSIZE_FACTOR)(global_map)
 
         # # map check uncomment to check output of observation
         # fig, axes = plt.subplots(1, 3, figsize=(10, 5))
@@ -119,17 +123,15 @@ class Worker:
     def save_reward_done(self, reward, done):
         self.episode_rewards.append(reward)
 
-
+    # Process actor output to target position
     def find_target_pos(self, action):
         with torch.no_grad():
-                # process actor output to target_position
-                post_sig_action = nn.Sigmoid()(action).cpu().numpy()
-                # print(f"post_sig_action {post_sig_action}")
+            post_sig_action = nn.Sigmoid()(action).cpu().numpy()
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-        local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
+        local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
+                      int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
         target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
-        # print(f"targ_pos {target_position}")
         return target_position
 
     def run_episode(self, curr_episode):
@@ -137,7 +139,6 @@ class Worker:
 
         observations = self.get_observations()
         for i in range(self.max_timestep):
-            # print(f"\nstep: {i}")
             self.save_observations(observations)
             value, action, action_log_probs = self.actor_critic.act(observations)
             self.save_action(action, action_log_probs)
@@ -158,7 +159,6 @@ class Worker:
                 next_position = self.robot_position
             else:   # go to next node in path planned by a star
                 next_position = self.env.node_coords[int(route[1])]
-            # print(f"next_pos {next_position}")
 
             reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             self.save_reward_done(reward, done)
@@ -176,13 +176,6 @@ class Worker:
         
         self.episode_len.append(i+1)
 
-        # print(self.episode_obs)
-        # print(self.episode_acts)
-        # print(self.episode_log_probs)
-        # print(self.episode_rewards)
-        # print(self.episode_returns)
-        # print(self.episode_len)
-
         # save gif
         if self.save_image:
             path = gifs_path
@@ -190,7 +183,6 @@ class Worker:
 
     def work(self, currEpisode):
         self.run_episode(currEpisode)
-
 
     def make_gif(self, path, n):
         with imageio.get_writer('{}/{}_explored_rate_{:.4g}.gif'.format(path, n, self.env.explored_rate), mode='I', duration=0.5) as writer:
@@ -203,9 +195,7 @@ class Worker:
         for filename in self.env.frame_files[:-1]:
             os.remove(filename)
 
-# ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-# local_size = (int(ground_truth_size[0] / 2) ,int(ground_truth_size[1] / 2))  # (h,w) # TODO 2 is a downsize parameter
-
-# global_policy = Global_Policy((8,240,320), 256)
-# worker = Worker(19, global_policy,save_image=True)
-# worker.work(19)
+if __name__=='__main__':
+    global_policy = RL_Policy((8,240,320), 2)
+    worker = Worker(0, weights=torch.load(""), save_image=True)
+    worker.work(0)
