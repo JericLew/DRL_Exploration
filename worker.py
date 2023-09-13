@@ -14,7 +14,7 @@ from network import Global_Policy
 from utils import DiagGaussian
 
 class Worker:
-    def __init__(self, global_step, weights, dist, save_image=False):
+    def __init__(self, global_step, weights, save_image=False):
         self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
         self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
@@ -24,8 +24,14 @@ class Worker:
         self.global_step = global_step
         self.actor = Global_Policy(INPUT_DIM, hidden_size=HIDDEN_SIZE).to(self.local_device)
         self.actor.load_state_dict(weights)
-        self.dist = dist
+
+        # Initialize distribution
+        # Initialize the covariance matrix used to query the actor for actions
+        self.cov_var = torch.full(size=(2,), fill_value=0.5).to(self.local_device)
+        self.cov_mat = torch.diag(self.cov_var).to(self.local_device)
+        self.dist = torch.distributions.MultivariateNormal
         # self.dist = DiagGaussian(self.actor.output_size, 2).to(self.local_device) # 256, 2
+
         self.save_image = save_image
         self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
 
@@ -113,9 +119,11 @@ class Worker:
     def act(self, observations, actor):
         with torch.no_grad():
             value, actor_features = actor(observations.unsqueeze(0)) #add batch dimension
-            dist = self.dist(actor_features.to(self.device))
+            dist = self.dist(actor_features, self.cov_mat)
             action = dist.sample().squeeze() # squeeze because it was made for multibatch input
-            action_log_probs = dist.log_probs(action).squeeze()
+            action_log_probs = dist.log_prob(action).squeeze()
+            # print(f"action {action}")
+            # print(f"logprobs {action_log_probs}")
         return value, action.detach(), action_log_probs.detach()
 
     def save_observations(self, observations):

@@ -31,8 +31,8 @@ class Global_Policy(nn.Module):
         )
 
         self.linear1 = nn.Linear(out_size * 32, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, 256)
-        self.critic_linear = nn.Linear(256, 1)
+        self.linear2 = nn.Linear(hidden_size, 2)
+        self.critic_linear = nn.Linear(2, 1)
         self.train()
 
     def forward(self, inputs):

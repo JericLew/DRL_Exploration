@@ -2,7 +2,11 @@ import torch
 from torch import nn
 from torch.optim import Adam
 import numpy as np
+
+import datetime
 import time
+import csv
+
 from worker import Worker
 from network import Global_Policy
 from utils import DiagGaussian
@@ -23,10 +27,25 @@ class PPO ():
 
         # Initialize distribution
         # Initialize the covariance matrix used to query the actor for actions
-        # self.cov_var = torch.full(size=(2,), fill_value=0.5)
-        # self.cov_mat = torch.diag(self.cov_var)
-        # self.dist = torch.distributions.MultivariateNormal
-        self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
+        self.cov_var = torch.full(size=(2,), fill_value=0.5).to(self.device)
+        self.cov_mat = torch.diag(self.cov_var).to(self.device)
+        self.dist = torch.distributions.MultivariateNormal
+        # self.dist = DiagGaussian(self.actor.output_size, 2).to(self.device) # 256, 2
+
+        # init csv
+        timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H%M')  # Get the current timestamp
+        self.csv_file = f'iteration_data_{timestamp}.csv'
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                "Iteration", 
+                "Average Episodic Length",
+                "Average Episodic Return",
+                "Average Actor Loss", 
+                "Average Critic Loss",                 
+                "Timesteps So Far",
+                "Iteration Time (secs)",
+            ])
 
         # This logger will help us with printing out summaries of each iteration
         self.logger = {
@@ -36,6 +55,7 @@ class PPO ():
             'batch_lens': [],       # episodic lengths in batch
             'batch_rews': [],       # episodic returns in batch
             'actor_losses': [],     # losses of actor network in current iteration
+            'critic_losses': [],
         }
             
     def learn(self, total_timesteps):
@@ -67,13 +87,12 @@ class PPO ():
 
             # print(f"V iter {V.size()}")
             # print(f"A_k iter {A_k.size()}")
-            # print(f"log_prob iter {batch_log_probs.size()}") # weird shape
+            # print(f"log_prob iter {batch_log_probs.size()}")
             # print(f"batch_returns iter {batch_returns.size()}")
             
             for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
                 # Calculate V_phi and pi_theta(a_t | s_t)
                 V, curr_log_probs = self.evaluate(batch_obs, batch_acts)
-                # print(f"V curr {V}")
 
                 ratios = torch.exp(curr_log_probs - batch_log_probs)
                 # Calculate surrogate losses.
@@ -96,6 +115,7 @@ class PPO ():
 
                 # Log actor loss
                 self.logger['actor_losses'].append(actor_loss.detach())
+                self.logger['critic_losses'].append(critic_loss.detach())
 
             # Print a summary of our training so far
             self._log_summary()
@@ -124,7 +144,7 @@ class PPO ():
         for _ in range(EPISODE_PER_BATCH):
             save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
 
-            worker = Worker(epi_so_far, policy_weights, dist=self.dist, save_image=save_img)
+            worker = Worker(epi_so_far, policy_weights, save_image=save_img)
             worker.work(epi_so_far)
             epi_so_far += 1
 
@@ -177,8 +197,8 @@ class PPO ():
         # Calculate the log probabilities of batch actions using most recent actor network.
         # This segment of code is similar to that in get_action()
         _, actor_features = self.actor(batch_obs)
-        dist = self.dist(actor_features)
-        action_log_probs = dist.log_probs(batch_acts)
+        dist = self.dist(actor_features, self.cov_mat)
+        action_log_probs = dist.log_prob(batch_acts)
         # Return the value vector V of each observation in the batch
         # and log probabilities log_probs of each action in the batch
         return V, action_log_probs
@@ -197,24 +217,37 @@ class PPO ():
         avg_ep_lens = np.mean(self.logger['batch_lens'])
         avg_ep_rews = np.mean([np.sum(ep_rews) for ep_rews in self.logger['batch_rews']])
         avg_actor_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['actor_losses']])
+        avg_critic_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['critic_losses']])
 
         # Round decimal places for more aesthetic logging messages
         avg_ep_lens = str(round(avg_ep_lens, 2))
         avg_ep_rews = str(round(avg_ep_rews, 2))
         avg_actor_loss = str(round(avg_actor_loss, 10))
+        avg_critic_loss = str(round(avg_critic_loss, 10))
 
         # Print logging statements
         print(flush=True)
         print(f"-------------------- Iteration #{i_so_far} --------------------", flush=True)
         print(f"Average Episodic Length: {avg_ep_lens}", flush=True)
         print(f"Average Episodic Return: {avg_ep_rews}", flush=True)
-        print(f"Average Loss: {avg_actor_loss}", flush=True)
+        print(f"Average Actor Loss: {avg_actor_loss}", flush=True)
+        print(f"Average Critic Loss: {avg_critic_loss}", flush=True)
         print(f"Timesteps So Far: {t_so_far}", flush=True)
         print(f"Iteration took: {delta_t} secs", flush=True)
         print(f"------------------------------------------------------", flush=True)
         print(flush=True)
 
+        # i_so_far starts from 1 in a way
+        def write_iteration_data(i_so_far, avg_ep_lens, avg_ep_rews, avg_actor_loss, avg_critic_loss,t_so_far, delta_t):
+            data = [i_so_far, avg_ep_lens, avg_ep_rews, avg_actor_loss, avg_critic_loss, t_so_far, delta_t]
+            with open(self.csv_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+
+        write_iteration_data(i_so_far, avg_ep_lens, avg_ep_rews, avg_actor_loss, avg_critic_loss, t_so_far, delta_t)
+
         # Reset batch-specific logging data
         self.logger['batch_lens'] = []
         self.logger['batch_rews'] = []
         self.logger['actor_losses'] = []
+        self.logger['critic_losses'] = []

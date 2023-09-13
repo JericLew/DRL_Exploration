@@ -16,7 +16,7 @@ class Env():
             self.map_dir = f'DungeonMaps/test'  # change to 'complex', 'medium', and 'easy'
         else:
             # self.map_dir = f'DungeonMaps/train'
-            self.map_dir = f'DungeonMaps/train'
+            self.map_dir = f'DungeonMaps/mini-train'
         self.map_list = os.listdir(self.map_dir)
         self.map_list.sort(reverse=True)
         self.map_index = map_index % np.size(self.map_list)
