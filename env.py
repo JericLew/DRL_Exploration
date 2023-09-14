@@ -7,6 +7,7 @@ import copy
 from sensor import *
 from graph_generator import *
 from node import *
+from parameter import *
 
 class Env():
     def __init__(self, map_index, k_size=20, plot=False, test=False):
@@ -15,7 +16,6 @@ class Env():
         if self.test:
             self.map_dir = f'DungeonMaps/test'  # change to 'complex', 'medium', and 'easy'
         else:
-            # self.map_dir = f'DungeonMaps/train'
             self.map_dir = f'DungeonMaps/mini-train'
         self.map_list = os.listdir(self.map_dir)
         self.map_list.sort(reverse=True)
@@ -25,12 +25,12 @@ class Env():
         self.ground_truth_size = np.shape(self.ground_truth)  # (480, 640)
 
         # initialize robot_belief
-        self.robot_belief = np.ones(self.ground_truth_size) * 127  # unexplored 127
+        self.robot_belief = np.ones(self.ground_truth_size) * 127  # Unexplored = 127
         self.downsampled_belief = None
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
         # initialize parameters
-        self.resolution = 4  # to downsample the map
+        self.resolution = 4 # to downsample the map for frontier
         self.sensor_range = 80
         self.explored_rate = 0
 
@@ -107,7 +107,7 @@ class Env():
         # check if done
         done = self.check_done()
         if done:
-            reward += 20 # a finishing reward
+            reward += FINISHING_REWARD
 
         return reward, done, robot_position, travel_dist
 
@@ -131,24 +131,24 @@ class Env():
 
     def check_done(self):
         done = False
-        # if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
-        if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+            done = True
+        elif len(self.frontiers) == 0:
             done = True
         return done
 
     def calculate_reward(self, dist, frontiers, same_position):
-        # TODO Modify this
+        # TODO Modify this TODO Tune this
         # new_free_area = self.calculate_new_free_area()
         # print(f"free area {new_free_area}")
-        # reward = new_free_area * 0.5 # TODO tune this
+        # reward = new_free_area * 0.5 # 
         # print(f"rewards {reward}")
 
-        # Using old rewards now
         reward = 0
-        reward -= dist / 64
+        reward -= dist / DIST_DENOMINATOR
 
         if same_position.all():
-            reward -= 5
+            reward -= SAME_POSITION_PUNISHMENT
 
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
@@ -156,10 +156,9 @@ class Env():
         frontiers_num = np.intersect1d(frontiers_to_check, pre_frontiers_to_check).shape[0]
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
-        reward += delta_num / 25
-        # print(f"rewards {reward}")
+        reward += delta_num / FRONTIER_DENOMINATOR
 
-        return reward/10
+        return reward
 
     def evaluate_exploration_rate(self):
         rate = np.sum(self.robot_belief == 255) / np.sum(self.ground_truth == 255)

@@ -72,7 +72,7 @@ class RL_Policy(nn.Module):
         value, _, _ = self(batch_obs)
         return value
     
-    def evaluate(self, batch_obs, batch_acts):
+    def evaluate_actions(self, batch_obs, batch_acts):
         value, actor_features = self(batch_obs)
         dist = self.dist(actor_features)
         action_log_probs = dist.log_probs(batch_acts)
