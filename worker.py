@@ -13,16 +13,16 @@ from parameter import *
 from network import RL_Policy
 
 class Worker:
-    def __init__(self, global_step, weights, save_image=False):
+    def __init__(self, meta_agent_id, actor_critic, global_step, save_image=False):
         # Handle devices for global training and local simulation
         self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
         self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
         # Initialise local actor critic for simulation
-        self.actor_critic = RL_Policy(INPUT_DIM, 2).to(self.local_device)
-        self.actor_critic.load_state_dict(weights)
-        
+        self.actor_critic = actor_critic
+
         # Initalise simulation environment
+        self.metaAgentID = meta_agent_id
         self.global_step = global_step
         self.k_size = K_SIZE
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
@@ -34,12 +34,10 @@ class Worker:
         self.robot_position = self.env.start_position  
 
         # Episode buffer
-        self.episode_obs = []
-        self.episode_acts = []
-        self.episode_log_probs = []
-        self.episode_rewards = []
-        self.episode_returns = []
-        self.episode_len = []
+        self.episode_buffer = []
+        self.perf_metrics = dict()
+        for i in range(4):
+            self.episode_buffer.append([])
 
     # Function to get corner coords for robot local area
     def get_local_map_boundaries(self, robot_position, local_size, full_size):
@@ -105,7 +103,7 @@ class Worker:
         observations[0:4, :, :] = local_map.detach()
         observations[4:, :, :] = nn.MaxPool2d(MAP_DOWNSIZE_FACTOR)(global_map)
 
-        # # map check uncomment to check output of observation
+        '''map check uncomment to check output of observation'''
         # fig, axes = plt.subplots(1, 3, figsize=(10, 5))
         # axes[0].imshow(robot_belief, cmap='gray')
         # axes[1].imshow(global_map[3, : :], cmap='gray') 
@@ -114,14 +112,26 @@ class Worker:
         return observations
     
     def save_observations(self, observations):
-        self.episode_obs.append(observations)
+        self.episode_buffer[0].append(observations)
 
     def save_action(self, action, action_log_probs):
-        self.episode_acts.append(action)
-        self.episode_log_probs.append(action_log_probs)
+        self.episode_buffer[1].append(action)
 
-    def save_reward_done(self, reward, done):
-        self.episode_rewards.append(reward)
+    def save_reward_done(self, reward, done):        
+        self.episode_buffer[2].append(torch.tensor(reward, dtype=torch.float).to(self.local_device))
+
+    def save_return(self, episode_rewards):
+        # The returns per episode per batch to return.
+		# The shape will be (num timesteps per episode)
+        episode_returns = []
+        discounted_reward = 0 # The discounted reward so far
+
+        # Iterate through all rewards per episode backwards
+        for rew in reversed(episode_rewards):
+            discounted_reward = rew + discounted_reward * GAMMA
+            episode_returns.insert(0, discounted_reward)
+        episode_returns = torch.tensor(episode_returns, dtype=torch.float).to(self.local_device)
+        self.episode_buffer[3] = episode_returns
 
     # Process actor output to target position
     def find_target_pos(self, action):
@@ -186,6 +196,7 @@ class Worker:
                 reward = 0
 
                 if done or planning_step == NUM_PLANNING_STEP - 1:
+                    self.save_return(self.episode_buffer[2])
                     break
 
                 observations = self.get_observations()
@@ -195,8 +206,11 @@ class Worker:
                 target_position = self.find_target_pos(action)
                 target_node_index = self.env.find_index_from_coords(target_position)
                 target_node_position = self.env.node_coords[target_node_index]
-        
-        self.episode_len.append(num_step+1)
+                
+        # save metrics
+        self.perf_metrics['travel_dist'] = self.travel_dist
+        self.perf_metrics['explored_rate'] = self.env.explored_rate
+        self.perf_metrics['success_rate'] = done
 
         # save gif
         if self.save_image:
@@ -216,8 +230,3 @@ class Worker:
         # Remove files
         for filename in self.env.frame_files[:-1]:
             os.remove(filename)
-
-# if __name__=='__main__':
-#     global_policy = RL_Policy((8,240,320), 2)
-#     worker = Worker(0, weights=torch.load("ppo_actor_critic.pth"), save_image=True)
-#     worker.work(0)
