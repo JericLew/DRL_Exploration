@@ -97,6 +97,8 @@ class PPO ():
                 # NOTE can possibly clip grad - torch.nn.utils.grad_norm to check grad 
                 self.actor_critic_optim.zero_grad()
                 actor_critic_loss.backward()
+                nn.utils.clip_grad_norm_(self.actor_critic.parameters(),
+                                         MAX_GRAD_NORM)
                 self.actor_critic_optim.step()
 
                 '''Check Gradients'''
