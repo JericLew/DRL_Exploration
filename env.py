@@ -7,6 +7,7 @@ import copy
 from sensor import *
 from graph_generator import *
 from node import *
+from parameter import *
 
 class Env():
     def __init__(self, map_index, k_size=20, plot=False, test=False):
@@ -15,7 +16,6 @@ class Env():
         if self.test:
             self.map_dir = f'DungeonMaps/test'  # change to 'complex', 'medium', and 'easy'
         else:
-            # self.map_dir = f'DungeonMaps/train'
             self.map_dir = f'DungeonMaps/mini-train'
         self.map_list = os.listdir(self.map_dir)
         self.map_list.sort(reverse=True)
@@ -107,7 +107,7 @@ class Env():
         # check if done
         done = self.check_done()
         if done:
-            reward += 20 # a finishing reward
+            reward += FINISHING_REWARD
 
         return reward, done, robot_position, travel_dist
 
@@ -131,8 +131,9 @@ class Env():
 
     def check_done(self):
         done = False
-        # if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
-        if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+            done = True
+        elif len(self.frontiers) == 0:
             done = True
         return done
 
@@ -144,10 +145,10 @@ class Env():
         # print(f"rewards {reward}")
 
         reward = 0
-        reward -= dist / 64
+        reward -= dist / DIST_DENOMINATOR
 
         if same_position.all():
-            reward -= 5
+            reward -= SAME_POSITION_PUNISHMENT
 
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
@@ -155,9 +156,9 @@ class Env():
         frontiers_num = np.intersect1d(frontiers_to_check, pre_frontiers_to_check).shape[0]
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
-        reward += delta_num / 25
+        reward += delta_num / FRONTIER_DENOMINATOR
 
-        return reward/10
+        return reward
 
     def evaluate_exploration_rate(self):
         rate = np.sum(self.robot_belief == 255) / np.sum(self.ground_truth == 255)

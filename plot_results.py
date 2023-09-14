@@ -11,6 +11,7 @@ args = parser.parse_args()
 iterations = []
 avg_actor_loss = []
 avg_critic_loss = []
+avg_entropy_loss = []
 avg_episodic_return = []
 
 # Open and read the CSV file
@@ -20,10 +21,11 @@ with open(args.csv_path, mode='r') as file:
         iterations.append(int(row['Iteration']))
         avg_actor_loss.append(float(row['Average Actor Loss']))
         avg_critic_loss.append(float(row['Average Critic Loss']))
+        avg_entropy_loss.append(float(row['Average Entropy Loss']))
         avg_episodic_return.append(float(row['Average Episodic Return']))
 
 # Create a grid of subplots
-fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+fig, axes = plt.subplots(4, 1, figsize=(12, 12), sharex=True)
 
 # Plot Average Actor Loss
 axes[0].plot(iterations, avg_actor_loss, marker='o', linestyle='-', label='Average Actor Loss', color='blue')
@@ -38,11 +40,18 @@ axes[1].grid(True)
 axes[1].legend()
 
 # Plot Average Episodic Return
-axes[2].plot(iterations, avg_episodic_return, marker='o', linestyle='-', label='Average Episodic Return', color='red')
+axes[2].plot(iterations, avg_entropy_loss, marker='o', linestyle='-', label='Average Entropy Loss', color='red')
 axes[2].set_xlabel('Iterations')
-axes[2].set_ylabel('Average Episodic Return')
+axes[2].set_ylabel('Average Entropy Loss')
 axes[2].grid(True)
 axes[2].legend()
+
+# Plot Average Episodic Return
+axes[3].plot(iterations, avg_episodic_return, marker='o', linestyle='-', label='Average Episodic Return', color='brown')
+axes[3].set_xlabel('Iterations')
+axes[3].set_ylabel('Average Episodic Return')
+axes[3].grid(True)
+axes[3].legend()
 
 # Adjust layout
 plt.tight_layout()

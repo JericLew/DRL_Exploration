@@ -33,7 +33,8 @@ class PPO ():
                 "Average Episodic Length",
                 "Average Episodic Return",
                 "Average Actor Loss", 
-                "Average Critic Loss",                 
+                "Average Critic Loss",
+                "Average Entropy Loss",                 
                 "Timesteps So Far",
                 "Iteration Time (secs)",
             ])
@@ -47,6 +48,7 @@ class PPO ():
             'batch_rews': [],       # episodic returns in batch
             'actor_losses': [],     # losses of actor network in current iteration
             'critic_losses': [],
+            'entropy_losses': [],
         }
             
     def learn(self, total_timesteps):
@@ -69,13 +71,14 @@ class PPO ():
             self.logger['i_so_far'] = i_so_far
             
             # Calculate advantage and batch log probs at k-th iteration
-            V, batch_log_probs, dist_entropy = self.actor_critic.evaluate(batch_obs, batch_acts)
-            A_k = batch_returns - V.detach()   
-            A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+            with torch.no_grad():
+                V, batch_log_probs, dist_entropy = self.actor_critic.evaluate_actions(batch_obs, batch_acts)
+                A_k = batch_returns - V.detach()
+                # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
             for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
                 # Calculate V_phi and pi_theta(a_t | s_t)
-                V, curr_log_probs, dist_entropy = self.actor_critic.evaluate(batch_obs, batch_acts)
+                V, curr_log_probs, dist_entropy = self.actor_critic.evaluate_actions(batch_obs, batch_acts)
 
                 # Calculate surrogate losses.
                 ratios = torch.exp(curr_log_probs - batch_log_probs.detach())
@@ -86,7 +89,8 @@ class PPO ():
                 actor_loss = (-torch.min(surr1, surr2)).mean()
                 critic_loss = nn.MSELoss()(V, batch_returns)
 
-                actor_critic_loss = actor_loss + critic_loss * CRITIC_LOSS_COEF\
+                actor_critic_loss = actor_loss\
+                    + critic_loss * CRITIC_LOSS_COEF\
                     - dist_entropy * ENTROPY_COEF
                 
                 # Calculate gradients and perform backward propagation for actor critic network
@@ -95,7 +99,7 @@ class PPO ():
                 actor_critic_loss.backward()
                 self.actor_critic_optim.step()
 
-                # # Check gradients
+                '''Check Gradients'''
                 # for name, param in self.actor_critic.named_parameters():
                 #     if param.grad is not None:
                 #         print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
@@ -103,6 +107,7 @@ class PPO ():
                 # Log losses
                 self.logger['actor_losses'].append(actor_loss.detach())
                 self.logger['critic_losses'].append(critic_loss.detach())
+                self.logger['entropy_losses'].append(dist_entropy.detach())
 
             # Print a summary of our training so far
             self._log_summary()
@@ -129,6 +134,7 @@ class PPO ():
         # Loop to collect multiple episode data for a batch
         for _ in range(EPISODE_PER_BATCH):
             save_img = True if epi_so_far % SAVE_IMG_GAP == 0 else False
+            save_img = save_img and GLOBAL_SAVE_IMG
 
             # Initialise Worker and run simulation
             worker = Worker(epi_so_far, actor_critic_weights, save_image=save_img)
@@ -186,11 +192,13 @@ class PPO ():
         avg_ep_rews = np.mean([np.sum(ep_rews) for ep_rews in self.logger['batch_rews']])
         avg_actor_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['actor_losses']])
         avg_critic_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['critic_losses']])
+        avg_entropy_loss = np.mean([losses.cpu().float().mean() for losses in self.logger['entropy_losses']])
 
         avg_ep_lens = str(round(avg_ep_lens, 2))
         avg_ep_rews = str(round(avg_ep_rews, 2))
         avg_actor_loss = str(round(avg_actor_loss, 10))
         avg_critic_loss = str(round(avg_critic_loss, 10))
+        avg_entropy_loss = str(round(avg_entropy_loss, 10))
 
         print(flush=True)
         print(f"-------------------- Iteration #{i_so_far} --------------------", flush=True)
@@ -198,13 +206,14 @@ class PPO ():
         print(f"Average Episodic Return: {avg_ep_rews}", flush=True)
         print(f"Average Actor Loss: {avg_actor_loss}", flush=True)
         print(f"Average Critic Loss: {avg_critic_loss}", flush=True)
+        print(f"Average Entropy Loss: {avg_entropy_loss}", flush=True)
         print(f"Timesteps So Far: {t_so_far}", flush=True)
         print(f"Iteration took: {delta_t} secs", flush=True)
         print(f"------------------------------------------------------", flush=True)
         print(flush=True)
 
         # Write CSV
-        data = [i_so_far, avg_ep_lens, avg_ep_rews, avg_actor_loss, avg_critic_loss, t_so_far, delta_t]
+        data = [i_so_far, avg_ep_lens, avg_ep_rews, avg_actor_loss, avg_critic_loss, avg_entropy_loss, t_so_far, delta_t]
         with open(self.csv_file, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(data)
@@ -214,3 +223,4 @@ class PPO ():
         self.logger['batch_rews'] = []
         self.logger['actor_losses'] = []
         self.logger['critic_losses'] = []
+        self.logger['entropy_losses'] = []
