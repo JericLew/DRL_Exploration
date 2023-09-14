@@ -24,20 +24,21 @@ class Env():
             self.map_dir + '/' + self.map_list[self.map_index])
         self.ground_truth_size = np.shape(self.ground_truth)  # (480, 640)
 
-        # initialize robot_belief
-        self.robot_belief = np.ones(self.ground_truth_size) * 127  # Unexplored = 127
-        self.downsampled_belief = None
-        self.old_robot_belief = copy.deepcopy(self.robot_belief)
-
         # initialize parameters
         self.resolution = 4 # to downsample the map for frontier
         self.sensor_range = 80
         self.explored_rate = 0
 
+        # initialize robot_belief
+        self.robot_belief = np.ones(self.ground_truth_size) * 127  # Unexplored = 127
+        self.downsampled_belief = None
+        self.old_robot_belief = copy.deepcopy(self.robot_belief)
+
         # initialize graph generator
         self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
         self.node_coords, self.graph, self.node_utility, self.guidepost = None, None, None, None
 
+        # Arrays for global input update
         self.frontiers = None
         self.visited_map = np.zeros(self.ground_truth_size)
         self.visited_map[self.start_position[1] - 2:self.start_position[1] + 3,\

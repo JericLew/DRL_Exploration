@@ -138,43 +138,65 @@ class Worker:
         done = False
 
         observations = self.get_observations()
-        for i in range(self.max_timestep):
-            self.save_observations(observations)
-            value, action, action_log_probs = self.actor_critic.act(observations)
-            self.save_action(action, action_log_probs)
+        self.save_observations(observations)
+        value, action, action_log_probs = self.actor_critic.act(observations)
 
-            # find target position from action features
-            target_position = self.find_target_pos(action)
-            # find closest node to target position
-            target_node_index = self.env.find_index_from_coords(target_position)
-            # find coordinates of target nod
-            target_node_position = self.env.node_coords[target_node_index]
+        # From raw action -> target pos -> target node -> target not pos
+        target_position = self.find_target_pos(action)
+        target_node_index = self.env.find_index_from_coords(target_position)
+        target_node_position = self.env.node_coords[target_node_index]
 
-            # use a star to find shortest path to target node
+        reward = 0
+
+        for num_step in range(self.max_timestep):
+
+            planning_step = num_step // NUM_ACTION_STEP
+            action_step = num_step % NUM_ACTION_STEP
+
+            # Use a star to find shortest path to target node
             dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
-            if route == []: # remain at same pos if destination same as target
-                next_position = self.robot_position
+            
+            # Handle route given
+            # If target == curent pos, remain at same spot
+            # Elif target == unreachable, remain at same spot
             # NOTE can have a better way to do this, ie find closest point?
-            elif route == None: # IF unreachable, stay at the same place
+            # Else gp tp next node in path planned by astar
+            if route == []: 
                 next_position = self.robot_position
-            else:   # go to next node in path planned by a star
+            elif route == None: 
+                next_position = self.robot_position
+            else:
                 next_position = self.env.node_coords[int(route[1])]
 
-            reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
-            self.save_reward_done(reward, done)
-
-            observations = self.get_observations()
-
+            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
+            reward += step_reward
+            
             # save a frame
             if self.save_image:
                 if not os.path.exists(gifs_path):
                     os.makedirs(gifs_path)
-                self.env.plot_env(self.global_step, gifs_path, i, self.travel_dist)
+                self.env.plot_env(self.global_step, gifs_path, num_step, self.travel_dist)
+            
+            # At last action step do global selection
+            if action_step == NUM_ACTION_STEP - 1 or done:
+                self.save_action(action, action_log_probs)
+                self.save_reward_done(reward, done)
+                value, action, action_log_probs = self.actor_critic.act(observations)
 
-            if done:
-                break
+                reward = 0
+
+                if done or planning_step == NUM_PLANNING_STEP - 1:
+                    break
+
+                observations = self.get_observations()
+                self.save_observations(observations)
+
+                # From raw action -> target pos -> target node -> target not pos
+                target_position = self.find_target_pos(action)
+                target_node_index = self.env.find_index_from_coords(target_position)
+                target_node_position = self.env.node_coords[target_node_index]
         
-        self.episode_len.append(i+1)
+        self.episode_len.append(num_step+1)
 
         # save gif
         if self.save_image:
@@ -195,7 +217,7 @@ class Worker:
         for filename in self.env.frame_files[:-1]:
             os.remove(filename)
 
-if __name__=='__main__':
-    global_policy = RL_Policy((8,240,320), 2)
-    worker = Worker(0, weights=torch.load(""), save_image=True)
-    worker.work(0)
+# if __name__=='__main__':
+#     global_policy = RL_Policy((8,240,320), 2)
+#     worker = Worker(0, weights=torch.load("ppo_actor_critic.pth"), save_image=True)
+#     worker.work(0)

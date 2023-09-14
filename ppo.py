@@ -71,9 +71,8 @@ class PPO ():
             self.logger['i_so_far'] = i_so_far
             
             # Calculate advantage and batch log probs at k-th iteration
-            with torch.no_grad():
-                V, batch_log_probs, dist_entropy = self.actor_critic.evaluate_actions(batch_obs, batch_acts)
-                A_k = batch_returns - V.detach()
+            V, batch_log_probs, dist_entropy = self.actor_critic.evaluate_actions(batch_obs, batch_acts)
+            A_k = batch_returns - V.detach()
                 # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
             for _ in range(N_UPDATES_PER_ITERATIONS):                                                       # ALG STEP 6 & 7
