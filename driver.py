@@ -166,7 +166,6 @@ def main():
                                             MAX_GRAD_NORM)
                     actor_critic_optim.step()
 
-                    print("Done Training")
                     '''Check Gradients'''
                     # for name, param in actor_critic.named_parameters():
                     #     if param.grad is not None:

@@ -144,6 +144,15 @@ class Worker:
         target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
         return target_position
 
+    def find_waypoint(self, target_position):
+        dist_from_target = -1
+        for frontier in self.env.frontiers:
+            current_dist = np.linalg.norm(target_position - frontier)
+            if current_dist < dist_from_target or dist_from_target == -1:
+                dist_from_target = current_dist
+                closest_frontier = frontier
+        return closest_frontier
+
     def run_episode(self, curr_episode):
         done = False
 
@@ -151,10 +160,12 @@ class Worker:
         self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
 
-        # From raw action -> target pos -> target node -> target not pos
+        # From raw action -> target pos -> waypoint
+        # -> waypoint node -> waypoint node pos
         target_position = self.find_target_pos(action)
-        target_node_index = self.env.find_index_from_coords(target_position)
-        target_node_position = self.env.node_coords[target_node_index]
+        waypoint = self.find_waypoint(target_position)
+        waypoint_node_index = self.env.find_index_from_coords(waypoint)
+        waypoint_node_position = self.env.node_coords[waypoint_node_index]
 
         reward = 0
 
@@ -164,8 +175,8 @@ class Worker:
             action_step = num_step % NUM_ACTION_STEP
 
             # Use a star to find shortest path to target node
-            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
-            
+            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, waypoint_node_position, self.env.node_coords)
+
             # Handle route given
             # If target == curent pos, remain at same spot
             # Elif target == unreachable, remain at same spot
@@ -202,10 +213,12 @@ class Worker:
                 observations = self.get_observations()
                 self.save_observations(observations)
 
-                # From raw action -> target pos -> target node -> target not pos
+                # From raw action -> target pos -> waypoint
+                # -> waypoint node -> waypoint node pos
                 target_position = self.find_target_pos(action)
-                target_node_index = self.env.find_index_from_coords(target_position)
-                target_node_position = self.env.node_coords[target_node_index]
+                waypoint = self.find_waypoint(target_position)
+                waypoint_node_index = self.env.find_index_from_coords(waypoint)
+                waypoint_node_position = self.env.node_coords[waypoint_node_index]
                 
         # save metrics
         self.perf_metrics['travel_dist'] = self.travel_dist
