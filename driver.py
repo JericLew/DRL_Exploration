@@ -122,24 +122,25 @@ def main():
                 
                 indices = range(len(experience_buffer[0]))
      
+                # randomly sample a batch data
+                sample_indices = random.sample(indices, BATCH_SIZE)
+                rollouts = []
+                for i in range(len(experience_buffer)):
+                    rollouts.append([experience_buffer[i][index] for index in sample_indices])
+
+                # Append episode data
+                batch_obs = torch.stack(rollouts[0]).to(device)
+                batch_acts = torch.stack(rollouts[1]).to(device)
+                batch_rewards = torch.stack(rollouts[2]).to(device)
+                batch_returns = torch.stack(rollouts[3]).to(device)
+
+                # Calculate advantage and batch log probs at k-th iteration
+                V, batch_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
+                A_k = batch_returns - V.detach()
+                # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+
                 # training for n times each step
                 for _ in range(N_UPDATES_PER_ITERATIONS):
-                    # randomly sample a batch data
-                    sample_indices = random.sample(indices, BATCH_SIZE)
-                    rollouts = []
-                    for i in range(len(experience_buffer)):
-                        rollouts.append([experience_buffer[i][index] for index in sample_indices])
-
-                    # Append episode data
-                    batch_obs = torch.stack(rollouts[0]).to(device)
-                    batch_acts = torch.stack(rollouts[1]).to(device)
-                    batch_rewards = torch.stack(rollouts[2]).to(device)
-                    batch_returns = torch.stack(rollouts[3]).to(device)
-
-                    # Calculate advantage and batch log probs at k-th iteration
-                    V, batch_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
-                    A_k = batch_returns - V.detach()
-                    # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
                     # Calculate V_phi and pi_theta(a_t | s_t)
                     V, curr_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)

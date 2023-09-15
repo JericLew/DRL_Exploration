@@ -2,7 +2,7 @@
 USE_GPU = False  # do you want to collect training data using GPUs
 USE_GPU_GLOBAL = True  # do you want to train the network using GPUs
 NUM_GPU = 1
-NUM_META_AGENT = 2
+NUM_META_AGENT = 4
 
 '''FILE DIRECTORIES AND SAVE FREQUENCIES'''
 FOLDER_NAME = 'ae_clean'
@@ -14,8 +14,8 @@ SAVE_IMG_GAP = 50 # episode interval for gif saving
 SAVE_FREQ = 32 # How often we save model in number of episodes
 
 '''REWARD PARAMETERS'''
-FINISHING_REWARD = 20 / 10
-SAME_POSITION_PUNISHMENT = 3 / 10
+FINISHING_REWARD = 30 / 10
+SAME_POSITION_PUNISHMENT = 5 / 10
 DIST_DENOMINATOR = 64 * 10 # 0 to 66, ave 45
 FRONTIER_DENOMINATOR = 20 * 10 # 0 to 20 , super sparse
 
@@ -36,11 +36,11 @@ SUMMARY_WINDOW = 32
 BATCH_SIZE = 128
 N_UPDATES_PER_ITERATIONS = 5 # Number of times to update actor/critic per iteration
 MINIMUM_BUFFER_SIZE = 1000
-REPLAY_SIZE = 5000
+REPLAY_SIZE = 2500
 
 '''PPO HYPERPARAMETERS'''
 LR = 2.5e-5 # Learning rate of actor optimizer
-GAMMA = 1 # Discount factor to be applied when calculating Rewards-To-Go
+GAMMA = 0.95 # Discount factor to be applied when calculating Rewards-To-Go
 CLIP = 0.2 # Recommended 0.2, helps define the threshold to clip the ratio during SGA
 MAX_GRAD_NORM = 0.5
 CRITIC_LOSS_COEF = 0.5
