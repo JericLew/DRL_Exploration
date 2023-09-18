@@ -1,6 +1,8 @@
 *.png
 *.gif
 *.csv
-gifs/
 *.pth
+gifs/
 __pycache__/
+model/
+train/

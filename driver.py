@@ -135,16 +135,20 @@ def main():
                 batch_returns = torch.stack(rollouts[3]).to(device)
 
                 # Calculate advantage and batch log probs at k-th iteration
-                V, batch_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
-                A_k = batch_returns - V.detach()
-                # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+                V_old, batch_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
+                A_k = batch_returns - V_old.detach()
+                # print(f"batch returns {batch_returns}")
+                # print(f"V {V}")
+                # print(f"A_k {A_k}")
+                # print(f"batch logprob {batch_log_probs}") # log probs for both go super high. -700 to -1400
+                A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
                 # training for n times each step
                 for _ in range(N_UPDATES_PER_ITERATIONS):
 
                     # Calculate V_phi and pi_theta(a_t | s_t)
                     V, curr_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
-
+    
                     # Calculate surrogate losses.
                     ratios = torch.exp(curr_log_probs - batch_log_probs.detach())
                     surr1 = ratios * A_k
@@ -152,25 +156,43 @@ def main():
 
                     # Calculate actor and critic losses.
                     actor_loss = (-torch.min(surr1, surr2)).mean()
-                    critic_loss = nn.MSELoss()(V, batch_returns)
+                    # critic_loss = nn.MSELoss()(V, batch_returns)
+
+                    value_pred_clipped = V_old.detach() + (V - V_old.detach()).clamp(-CLIP, CLIP)
+                    value_losses = (V - batch_returns).pow(2)
+                    value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)
+                    critic_loss = torch.max(value_losses, value_losses_clipped).mean()
 
                     actor_critic_loss = actor_loss\
                         + critic_loss * CRITIC_LOSS_COEF\
                         - dist_entropy * ENTROPY_COEF
                     
+                    print(f"actor l {actor_loss}")
+                    print(f"critic l {critic_loss}, {critic_loss * CRITIC_LOSS_COEF}")
+                    print(f"entropy l {dist_entropy}, {dist_entropy * ENTROPY_COEF}")
+                    print(f"total l {actor_critic_loss}")
+
                     # Calculate gradients and perform backward propagation for actor critic network
                     # NOTE can possibly clip grad - torch.nn.utils.grad_norm to check grad 
                     actor_critic_optim.zero_grad()
                     actor_critic_loss.backward()
                     actor_critic_grad_norm = nn.utils.clip_grad_norm_(actor_critic.parameters(),
-                                            MAX_GRAD_NORM)
+                                            max_norm=MAX_GRAD_NORM, norm_type=2)
                     actor_critic_optim.step()
 
                     '''Check Gradients'''
-                    # for name, param in actor_critic.named_parameters():
-                    #     if param.grad is not None:
-                    #         print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
+                    total_norm = 0
+                    for name, param in actor_critic.named_parameters():
+                        if param.grad is not None:
+                            # print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
+                            param_norm = param.grad.norm()
+                            total_norm += param_norm.item() ** 2
+                    total_norm = total_norm ** (1. / 2)
+                    print(f"total norm {total_norm}")
                 
+                # print(f"curr logpob {curr_log_probs}")
+                # print(f"ratio {ratios}")
+
                 # data record to be written in tensorboard
                 perf_data = []
                 for n in metric_name:

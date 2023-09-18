@@ -202,7 +202,6 @@ class Worker:
             if action_step == NUM_ACTION_STEP - 1 or done:
                 self.save_action(action, action_log_probs)
                 self.save_reward_done(reward, done)
-                value, action, action_log_probs = self.actor_critic.act(observations)
 
                 reward = 0
 
@@ -212,6 +211,7 @@ class Worker:
 
                 observations = self.get_observations()
                 self.save_observations(observations)
+                value, action, action_log_probs = self.actor_critic.act(observations)
 
                 # From raw action -> target pos -> waypoint
                 # -> waypoint node -> waypoint node pos
