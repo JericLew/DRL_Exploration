@@ -20,7 +20,7 @@ SAVE_FREQ = 32 # How often we save model in number of episodes
 '''REWARD PARAMETERS'''
 FINISHING_REWARD = 20 / 50
 SAME_POSITION_PUNISHMENT = 5 / 50
-DIST_DENOMINATOR = 64 * 50 # 0 to 66, ave 45
+DIST_DENOMINATOR = 48 * 50 # 0 to 66, ave 45
 FRONTIER_DENOMINATOR = 50 * 50 # 0 to 20 , super sparse
 
 '''ENV PARAMETER'''
