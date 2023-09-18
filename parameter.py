@@ -1,3 +1,5 @@
+from datetime import datetime
+
 '''LOCAL AND GLOBAL DEVICE'''
 USE_GPU = False  # do you want to collect training data using GPUs
 USE_GPU_GLOBAL = True  # do you want to train the network using GPUs
@@ -5,7 +7,9 @@ NUM_GPU = 1
 NUM_META_AGENT = 8
 
 '''FILE DIRECTORIES AND SAVE FREQUENCIES'''
-FOLDER_NAME = 'ae_clean'
+now = datetime.now()
+dt_string = now.strftime("%Y_%m_%d_%H%M")
+FOLDER_NAME = f'run_{dt_string}'
 model_path = f'model/{FOLDER_NAME}'
 train_path = f'train/{FOLDER_NAME}'
 gifs_path = f'gifs/{FOLDER_NAME}'
@@ -14,10 +18,10 @@ SAVE_IMG_GAP = 50 # episode interval for gif saving
 SAVE_FREQ = 32 # How often we save model in number of episodes
 
 '''REWARD PARAMETERS'''
-FINISHING_REWARD = 20 / 10
-SAME_POSITION_PUNISHMENT = 5 / 10
-DIST_DENOMINATOR = 64 * 10 # 0 to 66, ave 45
-FRONTIER_DENOMINATOR = 50 * 10 # 0 to 20 , super sparse
+FINISHING_REWARD = 20
+SAME_POSITION_PUNISHMENT = 5
+DIST_DENOMINATOR = 64 # 0 to 66, ave 45
+FRONTIER_DENOMINATOR = 50 # 0 to 20 , super sparse
 
 '''ENV PARAMETER'''
 MAX_TIMESTEP_PER_EPISODE = 120
@@ -36,7 +40,7 @@ SUMMARY_WINDOW = 32
 BATCH_SIZE = 128
 N_UPDATES_PER_ITERATIONS = 5 # Number of times to update actor/critic per iteration
 MINIMUM_BUFFER_SIZE = 2000
-REPLAY_SIZE = 10000
+REPLAY_SIZE = 8000
 
 '''PPO HYPERPARAMETERS'''
 LR = 2.5e-5 # Learning rate of actor optimizer
