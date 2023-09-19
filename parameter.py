@@ -20,7 +20,7 @@ SAVE_FREQ = 32 # How often we save model in number of episodes
 '''REWARD PARAMETERS'''
 FINISHING_REWARD = 20 / 100
 SAME_POSITION_PUNISHMENT = 5 / 100
-DIST_DENOMINATOR = 48 * 100 # 0 to 66, ave 45
+DIST_DENOMINATOR = 64 * 100 # 0 to 66, ave 45
 FRONTIER_DENOMINATOR = 50 * 100 # 0 to 20 , super sparse
 
 '''ENV PARAMETER'''
@@ -43,9 +43,9 @@ MINIMUM_BUFFER_SIZE = 2000 # 500 for laptop 1000 for desktop
 REPLAY_SIZE = 5000 # 2500 for laptop 5000 for desktop
 
 '''PPO HYPERPARAMETERS'''
-LR = 0.5e-5 # Learning rate of actor optimizer
+LR = 1e-5 # Learning rate of actor optimizer
 GAMMA = 0.99 # Discount factor to be applied when calculating Rewards-To-Go
 CLIP = 0.2 # Recommended 0.2, helps define the threshold to clip the ratio during SGA
 MAX_GRAD_NORM = 1
 CRITIC_LOSS_COEF = 0.5
-ENTROPY_COEF = 0.005
+ENTROPY_COEF = 0.001

@@ -136,15 +136,14 @@ def main():
                 batch_returns = torch.stack(rollouts[4]).to(device)
                 batch_values = torch.stack(rollouts[5]).to(device)
 
-                print(batch_acts.size())
-                print(batch_log_probs.size())
+                print(f"batch logprobs{batch_log_probs.size()}")
                 print(batch_log_probs) # log probs for both go super high. -700 to -1400
-                print(batch_values.size())
+                print(f"batch values{batch_values.size()}")
                 print(batch_values)                
 
                 # Calculate advantage
                 A_k = batch_returns - batch_values
-                # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+                A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
                 # training for n times each step
                 for _ in range(N_UPDATES_PER_ITERATIONS):
@@ -161,6 +160,7 @@ def main():
                     actor_loss = (-torch.min(surr1, surr2)).mean()
                     critic_loss = nn.MSELoss()(curr_values, batch_returns)
 
+                    ''' Clipped Critic Loss'''
                     # value_pred_clipped = V_old.detach() + (V - V_old.detach()).clamp(-CLIP, CLIP)
                     # value_losses = (V - batch_returns).pow(2)
                     # value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)
@@ -183,17 +183,14 @@ def main():
                     actor_critic_optim.step()
 
                     '''Check Gradients'''
-                    total_norm = 0
-                    for name, param in actor_critic.named_parameters():
-                        if param.grad is not None:
-                            # print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
-                            param_norm = param.grad.norm()
-                            total_norm += param_norm.item() ** 2
-                    total_norm = total_norm ** (1. / 2)
-                    print(f"total norm {total_norm}")
-                
-                    # print(f"curr logpob {curr_log_probs}")
-                    # print(f"ratio {ratios}")
+                    # total_norm = 0
+                    # for name, param in actor_critic.named_parameters():
+                    #     if param.grad is not None:
+                    #         print(f'Parameter: {name}, Gradient Norm: {param.grad.norm()}')
+                    #         param_norm = param.grad.norm()
+                    #         total_norm += param_norm.item() ** 2
+                    # total_norm = total_norm ** (1. / 2)
+                    # print(f"total norm {total_norm}")
 
                     # data record to be written in tensorboard
                     perf_data = []
