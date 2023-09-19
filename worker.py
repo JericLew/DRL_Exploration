@@ -36,7 +36,7 @@ class Worker:
         # Episode buffer
         self.episode_buffer = []
         self.perf_metrics = dict()
-        for i in range(4):
+        for i in range(6):
             self.episode_buffer.append([])
 
     # Function to get corner coords for robot local area
@@ -116,9 +116,10 @@ class Worker:
 
     def save_action(self, action, action_log_probs):
         self.episode_buffer[1].append(action)
+        self.episode_buffer[2].append(action_log_probs)
 
     def save_reward_done(self, reward, done):        
-        self.episode_buffer[2].append(torch.tensor(reward, dtype=torch.float).to(self.local_device))
+        self.episode_buffer[3].append(torch.tensor(reward, dtype=torch.float).to(self.local_device))
 
     def save_return(self, episode_rewards):
         # The returns per episode per batch to return.
@@ -131,7 +132,10 @@ class Worker:
             discounted_reward = rew + discounted_reward * GAMMA
             episode_returns.insert(0, discounted_reward)
         episode_returns = torch.tensor(episode_returns, dtype=torch.float).to(self.local_device)
-        self.episode_buffer[3] = episode_returns
+        self.episode_buffer[4] = episode_returns
+
+    def save_value(self, value):
+        self.episode_buffer[5].append(value)
 
     # Process actor output to target position
     def find_target_pos(self, action):
@@ -202,11 +206,12 @@ class Worker:
             if action_step == NUM_ACTION_STEP - 1 or done:
                 self.save_action(action, action_log_probs)
                 self.save_reward_done(reward, done)
+                self.save_value(value)
 
                 reward = 0
 
                 if done or planning_step == NUM_PLANNING_STEP - 1:
-                    self.save_return(self.episode_buffer[2])
+                    self.save_return(self.episode_buffer[3]) # input rewards to cal return
                     break
 
                 observations = self.get_observations()

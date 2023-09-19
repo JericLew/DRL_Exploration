@@ -94,7 +94,7 @@ def main():
 
     # initialize training replay buffer
     experience_buffer = []
-    for i in range(4):
+    for i in range(6):
         experience_buffer.append([])
 
     try:
@@ -131,37 +131,40 @@ def main():
                 # Append episode data
                 batch_obs = torch.stack(rollouts[0]).to(device)
                 batch_acts = torch.stack(rollouts[1]).to(device)
-                batch_rewards = torch.stack(rollouts[2]).to(device)
-                batch_returns = torch.stack(rollouts[3]).to(device)
+                batch_log_probs = torch.stack(rollouts[2]).to(device)
+                batch_rewards = torch.stack(rollouts[3]).to(device)
+                batch_returns = torch.stack(rollouts[4]).to(device)
+                batch_values = torch.stack(rollouts[5]).to(device)
 
-                # Calculate advantage and batch log probs at k-th iteration
-                V_old, batch_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
-                A_k = batch_returns - V_old.detach()
-                # print(f"batch returns {batch_returns}")
-                # print(f"V {V}")
-                # print(f"A_k {A_k}")
-                # print(f"batch logprob {batch_log_probs}") # log probs for both go super high. -700 to -1400
-                A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
+                print(batch_acts.size())
+                print(batch_log_probs.size())
+                print(batch_log_probs) # log probs for both go super high. -700 to -1400
+                print(batch_values.size())
+                print(batch_values)                
+
+                # Calculate advantage
+                A_k = batch_returns - batch_values
+                # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
                 # training for n times each step
                 for _ in range(N_UPDATES_PER_ITERATIONS):
 
                     # Calculate V_phi and pi_theta(a_t | s_t)
-                    V, curr_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
+                    curr_values, curr_log_probs, dist_entropy = actor_critic.evaluate_actions(batch_obs, batch_acts)
     
                     # Calculate surrogate losses.
-                    ratios = torch.exp(curr_log_probs - batch_log_probs.detach())
+                    ratios = torch.exp(curr_log_probs - batch_log_probs)
                     surr1 = ratios * A_k
                     surr2 = torch.clamp(ratios, 1 - CLIP, 1 + CLIP) * A_k
 
                     # Calculate actor and critic losses.
                     actor_loss = (-torch.min(surr1, surr2)).mean()
-                    # critic_loss = nn.MSELoss()(V, batch_returns)
+                    critic_loss = nn.MSELoss()(curr_values, batch_returns)
 
-                    value_pred_clipped = V_old.detach() + (V - V_old.detach()).clamp(-CLIP, CLIP)
-                    value_losses = (V - batch_returns).pow(2)
-                    value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)
-                    critic_loss = torch.max(value_losses, value_losses_clipped).mean()
+                    # value_pred_clipped = V_old.detach() + (V - V_old.detach()).clamp(-CLIP, CLIP)
+                    # value_losses = (V - batch_returns).pow(2)
+                    # value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)
+                    # critic_loss = torch.max(value_losses, value_losses_clipped).mean()
 
                     actor_critic_loss = actor_loss\
                         + critic_loss * CRITIC_LOSS_COEF\
@@ -173,7 +176,6 @@ def main():
                     print(f"total l {actor_critic_loss}")
 
                     # Calculate gradients and perform backward propagation for actor critic network
-                    # NOTE can possibly clip grad - torch.nn.utils.grad_norm to check grad 
                     actor_critic_optim.zero_grad()
                     actor_critic_loss.backward()
                     actor_critic_grad_norm = nn.utils.clip_grad_norm_(actor_critic.parameters(),
@@ -190,16 +192,16 @@ def main():
                     total_norm = total_norm ** (1. / 2)
                     print(f"total norm {total_norm}")
                 
-                # print(f"curr logpob {curr_log_probs}")
-                # print(f"ratio {ratios}")
+                    # print(f"curr logpob {curr_log_probs}")
+                    # print(f"ratio {ratios}")
 
-                # data record to be written in tensorboard
-                perf_data = []
-                for n in metric_name:
-                    perf_data.append(np.nanmean(perf_metrics[n]))
-                data = [batch_rewards.mean().item(), batch_returns.mean().item(), actor_loss.item(),
-                        critic_loss.mean().item(), dist_entropy.mean().item(), actor_critic_grad_norm.item(), *perf_data]
-                training_data.append(data)
+                    # data record to be written in tensorboard
+                    perf_data = []
+                    for n in metric_name:
+                        perf_data.append(np.nanmean(perf_metrics[n]))
+                    data = [batch_rewards.mean().item(), batch_returns.mean().item(), actor_loss.item(),
+                            critic_loss.mean().item(), dist_entropy.mean().item(), actor_critic_grad_norm.item(), *perf_data]
+                    training_data.append(data)
 
             # write record to tensorboard
             if len(training_data) >= SUMMARY_WINDOW:

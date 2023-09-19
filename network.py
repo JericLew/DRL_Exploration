@@ -66,7 +66,7 @@ class RL_Policy(nn.Module):
             action_log_probs = dist.log_probs(action).squeeze()
             # print(f"action {action}")
             # print(f"logprobs {action_log_probs}")
-        return value, action.detach(), action_log_probs.detach()
+        return value.squeeze().detach(), action.detach(), action_log_probs.detach()
 
     def get_value(self, batch_obs):
         value, _, _ = self(batch_obs)

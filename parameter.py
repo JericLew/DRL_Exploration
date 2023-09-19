@@ -4,7 +4,7 @@ from datetime import datetime
 USE_GPU = False  # do you want to collect training data using GPUs
 USE_GPU_GLOBAL = True  # do you want to train the network using GPUs
 NUM_GPU = 1
-NUM_META_AGENT = 4 # 4 for laptop 8 for desktop
+NUM_META_AGENT = 8 # 4 for laptop 8 for desktop
 
 '''FILE DIRECTORIES AND SAVE FREQUENCIES'''
 now = datetime.now()
@@ -18,10 +18,10 @@ SAVE_IMG_GAP = 50 # episode interval for gif saving
 SAVE_FREQ = 32 # How often we save model in number of episodes
 
 '''REWARD PARAMETERS'''
-FINISHING_REWARD = 20 / 50
-SAME_POSITION_PUNISHMENT = 5 / 50
-DIST_DENOMINATOR = 48 * 50 # 0 to 66, ave 45
-FRONTIER_DENOMINATOR = 50 * 50 # 0 to 20 , super sparse
+FINISHING_REWARD = 20 / 100
+SAME_POSITION_PUNISHMENT = 5 / 100
+DIST_DENOMINATOR = 48 * 100 # 0 to 66, ave 45
+FRONTIER_DENOMINATOR = 50 * 100 # 0 to 20 , super sparse
 
 '''ENV PARAMETER'''
 MAX_TIMESTEP_PER_EPISODE = 120
@@ -39,8 +39,8 @@ LOAD_MODEL = False
 SUMMARY_WINDOW = 20
 BATCH_SIZE = 128
 N_UPDATES_PER_ITERATIONS = 5 # Number of times to update actor/critic per iteration
-MINIMUM_BUFFER_SIZE = 500 # 500 for laptop 2000 for desktop
-REPLAY_SIZE = 2500 # 2500 for laptop 10000 for desktop
+MINIMUM_BUFFER_SIZE = 2000 # 500 for laptop 1000 for desktop
+REPLAY_SIZE = 5000 # 2500 for laptop 5000 for desktop
 
 '''PPO HYPERPARAMETERS'''
 LR = 0.5e-5 # Learning rate of actor optimizer
