@@ -150,6 +150,7 @@ class Env():
 
         if same_position.all():
             reward -= SAME_POSITION_PUNISHMENT
+            print("Same Pos Punish")
 
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
@@ -159,7 +160,8 @@ class Env():
         delta_num = pre_frontiers_num - frontiers_num
         reward += delta_num / FRONTIER_DENOMINATOR
 
-        return reward
+        print(f"dist {dist}, delta num {delta_num}, reward {reward}\n")
+        return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):
         rate = np.sum(self.robot_belief == 255) / np.sum(self.ground_truth == 255)

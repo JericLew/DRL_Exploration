@@ -134,12 +134,7 @@ def main():
                 batch_log_probs = torch.stack(rollouts[2]).to(device)
                 batch_rewards = torch.stack(rollouts[3]).to(device)
                 batch_returns = torch.stack(rollouts[4]).to(device)
-                batch_values = torch.stack(rollouts[5]).to(device)
-
-                print(f"batch logprobs{batch_log_probs.size()}")
-                print(batch_log_probs) # log probs for both go super high. -700 to -1400
-                print(f"batch values{batch_values.size()}")
-                print(batch_values)                
+                batch_values = torch.stack(rollouts[5]).to(device)       
 
                 # Calculate advantage
                 A_k = batch_returns - batch_values

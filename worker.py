@@ -164,12 +164,17 @@ class Worker:
         self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
 
-        # From raw action -> target pos -> waypoint
-        # -> waypoint node -> waypoint node pos
+        '''From raw action -> target pos -> waypoint
+        -> waypoint node -> waypoint node pos'''
+        # target_position = self.find_target_pos(action)
+        # waypoint = self.find_waypoint(target_position)
+        # waypoint_node_index = self.env.find_index_from_coords(waypoint)
+        # waypoint_node_position = self.env.node_coords[waypoint_node_index]
+
+        '''From raw action -> target pos -> target node -> target not pos'''
         target_position = self.find_target_pos(action)
-        waypoint = self.find_waypoint(target_position)
-        waypoint_node_index = self.env.find_index_from_coords(waypoint)
-        waypoint_node_position = self.env.node_coords[waypoint_node_index]
+        target_node_index = self.env.find_index_from_coords(target_position)
+        target_node_position = self.env.node_coords[target_node_index]
 
         reward = 0
 
@@ -179,7 +184,7 @@ class Worker:
             action_step = num_step % NUM_ACTION_STEP
 
             # Use a star to find shortest path to target node
-            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, waypoint_node_position, self.env.node_coords)
+            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
 
             # Handle route given
             # If target == curent pos, remain at same spot
@@ -212,19 +217,25 @@ class Worker:
 
                 if done or planning_step == NUM_PLANNING_STEP - 1:
                     self.save_return(self.episode_buffer[3]) # input rewards to cal return
+                    print(f"return {self.episode_buffer[4]}")
                     break
 
                 observations = self.get_observations()
                 self.save_observations(observations)
                 value, action, action_log_probs = self.actor_critic.act(observations)
 
-                # From raw action -> target pos -> waypoint
-                # -> waypoint node -> waypoint node pos
-                target_position = self.find_target_pos(action)
-                waypoint = self.find_waypoint(target_position)
-                waypoint_node_index = self.env.find_index_from_coords(waypoint)
-                waypoint_node_position = self.env.node_coords[waypoint_node_index]
+                '''From raw action -> target pos -> waypoint
+                -> waypoint node -> waypoint node pos'''
+                # target_position = self.find_target_pos(action)
+                # waypoint = self.find_waypoint(target_position)
+                # waypoint_node_index = self.env.find_index_from_coords(waypoint)
+                # waypoint_node_position = self.env.node_coords[waypoint_node_index]
                 
+                '''From raw action -> target pos -> target node -> target not pos'''
+                target_position = self.find_target_pos(action)
+                target_node_index = self.env.find_index_from_coords(target_position)
+                target_node_position = self.env.node_coords[target_node_index]   
+
         # save metrics
         self.perf_metrics['travel_dist'] = self.travel_dist
         self.perf_metrics['explored_rate'] = self.env.explored_rate
