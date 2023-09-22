@@ -137,7 +137,8 @@ def main():
                 batch_values = torch.stack(rollouts[5]).to(device)       
 
                 # Calculate advantage
-                A_k = batch_returns - batch_values
+                curr_values = actor_critic.get_value(batch_obs)
+                A_k = batch_returns - curr_values
                 A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10) #NOTE MIGHT NOT HAVE TO NORMALISE
 
                 # training for n times each step
@@ -187,13 +188,13 @@ def main():
                     # total_norm = total_norm ** (1. / 2)
                     # print(f"total norm {total_norm}")
 
-                    # data record to be written in tensorboard
-                    perf_data = []
-                    for n in metric_name:
-                        perf_data.append(np.nanmean(perf_metrics[n]))
-                    data = [batch_rewards.mean().item(), batch_returns.mean().item(), actor_loss.item(),
-                            critic_loss.mean().item(), dist_entropy.mean().item(), actor_critic_grad_norm.item(), *perf_data]
-                    training_data.append(data)
+                # data record to be written in tensorboard
+                perf_data = []
+                for n in metric_name:
+                    perf_data.append(np.nanmean(perf_metrics[n]))
+                data = [batch_rewards.mean().item(), batch_returns.mean().item(), actor_loss.item(),
+                        critic_loss.mean().item(), dist_entropy.mean().item(), actor_critic_grad_norm.item(), *perf_data]
+                training_data.append(data)
 
             # write record to tensorboard
             if len(training_data) >= SUMMARY_WINDOW:

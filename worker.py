@@ -217,7 +217,6 @@ class Worker:
 
                 if done or planning_step == NUM_PLANNING_STEP - 1:
                     self.save_return(self.episode_buffer[3]) # input rewards to cal return
-                    print(f"return {self.episode_buffer[4]}")
                     break
 
                 observations = self.get_observations()

@@ -69,8 +69,9 @@ class RL_Policy(nn.Module):
         return value.squeeze().detach(), action.detach(), action_log_probs.detach()
 
     def get_value(self, batch_obs):
-        value, _, _ = self(batch_obs)
-        return value
+        with torch.no_grad():
+            value, _ = self(batch_obs)
+        return value.detach()
     
     def evaluate_actions(self, batch_obs, batch_acts):
         value, actor_features = self(batch_obs)
