@@ -94,7 +94,7 @@ def main():
 
     # initialize training replay buffer
     experience_buffer = []
-    for i in range(6):
+    for i in range(5):
         experience_buffer.append([])
 
     try:
@@ -134,7 +134,6 @@ def main():
                 batch_log_probs = torch.stack(rollouts[2]).to(device)
                 batch_rewards = torch.stack(rollouts[3]).to(device)
                 batch_returns = torch.stack(rollouts[4]).to(device)
-                batch_values = torch.stack(rollouts[5]).to(device)       
 
                 # Calculate advantage
                 curr_values = actor_critic.get_value(batch_obs)
@@ -166,10 +165,10 @@ def main():
                         + critic_loss * CRITIC_LOSS_COEF\
                         - dist_entropy * ENTROPY_COEF
                     
-                    print(f"actor l {actor_loss}")
-                    print(f"critic l {critic_loss}, {critic_loss * CRITIC_LOSS_COEF}")
-                    print(f"entropy l {dist_entropy}, {dist_entropy * ENTROPY_COEF}")
-                    print(f"total l {actor_critic_loss}")
+                    # print(f"actor l {actor_loss}")
+                    # print(f"critic l {critic_loss}, {critic_loss * CRITIC_LOSS_COEF}")
+                    # print(f"entropy l {dist_entropy}, {dist_entropy * ENTROPY_COEF}")
+                    # print(f"total l {actor_critic_loss}")
 
                     # Calculate gradients and perform backward propagation for actor critic network
                     actor_critic_optim.zero_grad()

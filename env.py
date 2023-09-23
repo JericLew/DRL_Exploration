@@ -36,13 +36,13 @@ class Env():
 
         # initialize graph generator
         self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
-        self.node_coords, self.graph, self.node_utility, self.guidepost = None, None, None, None
+        self.node_coords, self.graph = None, None
 
         # Arrays for global input update
         self.frontiers = None
         self.visited_map = np.zeros(self.ground_truth_size)
-        self.visited_map[self.start_position[1] - 2:self.start_position[1] + 3,\
-                        self.start_position[0] - 2:self.start_position[0] + 3] = 1
+        self.visited_map[self.start_position[1] - 4:self.start_position[1] + 5,\
+                        self.start_position[0] - 4:self.start_position[0] + 5] = 1
         self.visited = np.array([self.start_position])
         self.targets = np.array([self.start_position])
 
@@ -66,8 +66,7 @@ class Env():
         self.frontiers = self.find_frontier()
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
-        self.node_coords, self.graph, self.node_utility, self.guidepost = self.graph_generator.generate_graph(
-            self.start_position, self.robot_belief, self.frontiers)
+        self.node_coords, self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
 
 
     def step(self, robot_position, next_position, target_position, travel_dist):
@@ -76,9 +75,7 @@ class Env():
         travel_dist += dist
 
         same_position = robot_position == next_position
-        # print(f"robot pos before {robot_position}")
         robot_position = next_position 
-        # print(f"robot pos after {robot_position}")
 
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
@@ -91,15 +88,14 @@ class Env():
         # calculate the reward associated with the action
         reward = self.calculate_reward(dist, frontiers, same_position)
 
-        self.visited_map[robot_position[1] - 2:robot_position[1] + 3,\
-                        robot_position[0] - 2:robot_position[0] + 3] = 1 # for masking to update observation
+        self.visited_map[robot_position[1] - 4:robot_position[1] + 5,\
+                        robot_position[0] - 4:robot_position[0] + 5] = 1 # for masking to update observation
     
         self.visited = np.append(self.visited, [robot_position], axis=0) # can be faster?
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
         # update the graph
-        self.node_coords, self.graph, self.node_utility, self.guidepost = self.graph_generator.update_graph(
-            robot_position, self.robot_belief, self.old_robot_belief, frontiers, self.frontiers)
+        self.node_coords, self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -150,7 +146,6 @@ class Env():
 
         if same_position.all():
             reward -= SAME_POSITION_PUNISHMENT
-            # print("Same Pos Punish")
 
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
@@ -160,7 +155,7 @@ class Env():
         delta_num = pre_frontiers_num - frontiers_num
         reward += delta_num / FRONTIER_DENOMINATOR
 
-        # print(f"dist {dist}, delta num {delta_num}, reward {reward}\n")
+        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}\n")
         return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):
@@ -211,7 +206,6 @@ class Env():
         plt.cla()
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
-        # plt.scatter(self.node_coords[:, 0], self.node_coords[:, 1], c=self.node_utility, zorder=5)
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
         plt.plot(self.targets[-5:, 0], self.targets[-5:, 1], 'g--', linewidth=2)
         plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'gx', markersize=8)

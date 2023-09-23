@@ -36,7 +36,7 @@ class Worker:
         # Episode buffer
         self.episode_buffer = []
         self.perf_metrics = dict()
-        for i in range(6):
+        for i in range(5):
             self.episode_buffer.append([])
 
     # Function to get corner coords for robot local area
@@ -95,8 +95,8 @@ class Worker:
         global_map[0, mask_unkn] = 0
         global_map[1, mask_unkn] = 0
         global_map[3, mask_visi] = 1
-        global_map[2, self.robot_position[1] - 2:self.robot_position[1] + 3, \
-                    self.robot_position[0] - 2:self.robot_position[0] + 3] = 1 
+        global_map[2, self.robot_position[1] - 4:self.robot_position[1] + 5, \
+                    self.robot_position[0] - 4:self.robot_position[0] + 5] = 1 
         
         local_map = global_map[:, lmb[0]:lmb[1], lmb[2]:lmb[3]] # (width,height)
 
@@ -133,9 +133,6 @@ class Worker:
             episode_returns.insert(0, discounted_reward)
         episode_returns = torch.tensor(episode_returns, dtype=torch.float).to(self.local_device)
         self.episode_buffer[4] = episode_returns
-
-    def save_value(self, value):
-        self.episode_buffer[5].append(value)
 
     # Process actor output to target position
     def find_target_pos(self, action):
@@ -211,7 +208,6 @@ class Worker:
             if action_step == NUM_ACTION_STEP - 1 or done:
                 self.save_action(action, action_log_probs)
                 self.save_reward_done(reward, done)
-                self.save_value(value)
 
                 reward = 0
 
