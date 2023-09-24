@@ -1,42 +1,35 @@
-import copy
-import os
-import matplotlib.pyplot as plt
-
 import imageio
+import csv
+import os
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
-
+import matplotlib.pyplot as plt
 from env import Env
-from parameter import *
+from test_parameter import *
 
 
-class Worker:
+class TestWorker:
     def __init__(self, meta_agent_id, actor_critic, global_step, save_image=False):
         # Handle devices for global training and local simulation
-        self.device = torch.device('cuda') if USE_GPU_GLOBAL else torch.device('cpu')
-        self.local_device = torch.device('cuda') if USE_GPU else torch.device('cpu')
+        self.device = torch.device('cuda') if USE_GPU else torch.device('cpu')
 
         # Initialise local actor critic for simulation
         self.actor_critic = actor_critic
 
-        # Initalise simulation environment
         self.metaAgentID = meta_agent_id
         self.global_step = global_step
         self.k_size = K_SIZE
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.save_image = save_image
-        self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
-
+        self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image, test=True)
+       
         # Initialise varibles
         self.travel_dist = 0
-        self.robot_position = self.env.start_position  
+        self.robot_position = self.env.start_position
 
-        # Episode buffer
-        self.episode_buffer = []
         self.perf_metrics = dict()
-        for i in range(5):
-            self.episode_buffer.append([])
 
     # Function to get corner coords for robot local area
     def get_local_map_boundaries(self, robot_position, local_size, full_size):
@@ -59,7 +52,7 @@ class Worker:
         local_robot_x = x_center - x_start
 
         return y_start, y_end, x_start, x_end, local_robot_y, local_robot_x
-
+    
     # Retrieve observation with shape (8 x Local H x Local W)
     def get_observations(self):
         # observation[0, :, :] probability of obstacle
@@ -74,9 +67,9 @@ class Worker:
         local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR), \
                       int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR)) # (h,w)
         
-        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.local_device)
-        local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.local_device)
-        observations = torch.zeros(8, local_size[0], local_size[1]).to(self.local_device) # (8,height,width)
+        global_map = torch.zeros(4, ground_truth_size[0], ground_truth_size[1]).to(self.device)
+        local_map = torch.zeros(4, local_size[0], local_size[1]).to(self.device)
+        observations = torch.zeros(8, local_size[0], local_size[1]).to(self.device) # (8,height,width)
 
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
 
@@ -110,29 +103,6 @@ class Worker:
         # plt.savefig('output.png')
         return observations
     
-    def save_observations(self, observations):
-        self.episode_buffer[0].append(observations)
-
-    def save_action(self, action, action_log_probs):
-        self.episode_buffer[1].append(action)
-        self.episode_buffer[2].append(action_log_probs)
-
-    def save_reward_done(self, reward, done):        
-        self.episode_buffer[3].append(torch.tensor(reward, dtype=torch.float).to(self.local_device))
-
-    def save_return(self, episode_rewards):
-        # The returns per episode per batch to return.
-		# The shape will be (num timesteps per episode)
-        episode_returns = []
-        discounted_reward = 0 # The discounted reward so far
-
-        # Iterate through all rewards per episode backwards
-        for rew in reversed(episode_rewards):
-            discounted_reward = rew + discounted_reward * GAMMA
-            episode_returns.insert(0, discounted_reward)
-        episode_returns = torch.tensor(episode_returns, dtype=torch.float).to(self.local_device)
-        self.episode_buffer[4] = episode_returns
-
     # Process actor output to target position
     def find_target_pos(self, action):
         with torch.no_grad():
@@ -143,30 +113,13 @@ class Worker:
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
         target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
         return target_position
-
-    def find_waypoint(self, target_position):
-        dist_from_target = -1
-        for frontier in self.env.frontiers:
-            current_dist = np.linalg.norm(target_position - frontier)
-            if current_dist < dist_from_target or dist_from_target == -1:
-                dist_from_target = current_dist
-                closest_frontier = frontier
-        return closest_frontier
-
+    
     def run_episode(self, curr_episode):
         done = False
 
         observations = self.get_observations()
-        self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
-
-        '''From raw action -> target pos -> waypoint
-        -> waypoint node -> waypoint node pos'''
-        # target_position = self.find_target_pos(action)
-        # waypoint = self.find_waypoint(target_position)
-        # waypoint_node_index = self.env.find_index_from_coords(waypoint)
-        # waypoint_node_position = self.env.node_coords[waypoint_node_index]
-
+        
         '''From raw action -> target pos -> target node -> target not pos'''
         target_position = self.find_target_pos(action)
         target_node_index = self.env.find_index_from_coords(target_position)
@@ -175,13 +128,12 @@ class Worker:
         reward = 0
 
         for num_step in range(self.max_timestep):
-
             planning_step = num_step // NUM_ACTION_STEP
             action_step = num_step % NUM_ACTION_STEP
 
             # Use a star to find shortest path to target node
             dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
-
+            
             # Handle route given
             # If target == curent pos, remain at same spot
             # Elif target == unreachable, remain at same spot
@@ -194,54 +146,70 @@ class Worker:
             else:
                 next_position = self.env.node_coords[int(route[1])]
 
-            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
+            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position,
+                                                                                     next_position, target_position, self.travel_dist)
             reward += step_reward
-            
+
             # save a frame
             if self.save_image:
                 if not os.path.exists(gifs_path):
                     os.makedirs(gifs_path)
                 self.env.plot_env(self.global_step, gifs_path, num_step, self.travel_dist)
-            
+
+            # save evaluation data
+            if SAVE_TRAJECTORY:
+                if not os.path.exists(trajectory_path):
+                    os.makedirs(trajectory_path)
+                csv_filename = f'{trajectory_path}/ours_trajectory_result.csv'
+                new_file = False if os.path.exists(csv_filename) else True
+                field_names = ['dist', 'area']
+                with open(csv_filename, 'a') as csvfile:
+                    writer = csv.writer(csvfile)
+                    if new_file:
+                        writer.writerow(field_names)
+                    csv_data = np.array([self.travel_dist, np.sum(self.env.robot_belief == 255)]).reshape(1, -1)
+                    writer.writerows(csv_data)
+
             # At last action step do global selection
             if action_step == NUM_ACTION_STEP - 1 or done:
-                self.save_action(action, action_log_probs)
-                self.save_reward_done(reward, done)
-
                 reward = 0
 
                 if done or planning_step == NUM_PLANNING_STEP - 1:
-                    self.save_return(self.episode_buffer[3]) # input rewards to cal return
                     break
 
                 observations = self.get_observations()
-                self.save_observations(observations)
                 value, action, action_log_probs = self.actor_critic.act(observations)
-
-                '''From raw action -> target pos -> waypoint
-                -> waypoint node -> waypoint node pos'''
-                # target_position = self.find_target_pos(action)
-                # waypoint = self.find_waypoint(target_position)
-                # waypoint_node_index = self.env.find_index_from_coords(waypoint)
-                # waypoint_node_position = self.env.node_coords[waypoint_node_index]
                 
                 '''From raw action -> target pos -> target node -> target not pos'''
                 target_position = self.find_target_pos(action)
                 target_node_index = self.env.find_index_from_coords(target_position)
                 target_node_position = self.env.node_coords[target_node_index]   
 
-        # save metrics
         self.perf_metrics['travel_dist'] = self.travel_dist
         self.perf_metrics['explored_rate'] = self.env.explored_rate
         self.perf_metrics['success_rate'] = done
+
+        # save final path length
+        if SAVE_LENGTH:
+            if not os.path.exists(length_path):
+                os.makedirs(length_path)
+            csv_filename = f'{length_path}/ours_length_result.csv'
+            new_file = False if os.path.exists(csv_filename) else True
+            field_names = ['dist']
+            with open(csv_filename, 'a') as csvfile:
+                writer = csv.writer(csvfile)
+                if new_file:
+                    writer.writerow(field_names)
+                csv_data = np.array([self.travel_dist]).reshape(-1,1)
+                writer.writerows(csv_data)
 
         # save gif
         if self.save_image:
             path = gifs_path
             self.make_gif(path, curr_episode)
 
-    def work(self, currEpisode):
-        self.run_episode(currEpisode)
+    def work(self, curr_episode):
+        self.run_episode(curr_episode)
 
     def make_gif(self, path, n):
         with imageio.get_writer('{}/{}_explored_rate_{:.4g}.gif'.format(path, n, self.env.explored_rate), mode='I', duration=0.5) as writer:
@@ -253,3 +221,4 @@ class Worker:
         # Remove files
         for filename in self.env.frame_files[:-1]:
             os.remove(filename)
+

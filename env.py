@@ -14,7 +14,7 @@ class Env():
         # import environment ground truth from dungeon files
         self.test = test
         if self.test:
-            self.map_dir = f'DungeonMaps/test'  # change to 'complex', 'medium', and 'easy'
+            self.map_dir = f'DungeonMaps/easy'  # change to 'complex', 'medium', and 'easy'
         else:
             self.map_dir = f'DungeonMaps/train'
         self.map_list = os.listdir(self.map_dir)
@@ -135,17 +135,7 @@ class Env():
         return done
 
     def calculate_reward(self, dist, frontiers, same_position):
-        # TODO Modify this TODO Tune this
-        # new_free_area = self.calculate_new_free_area()
-        # print(f"free area {new_free_area}")
-        # reward = new_free_area * 0.5 # 
-        # print(f"rewards {reward}")
-
         reward = 0
-        reward -= dist / DIST_DENOMINATOR
-
-        if same_position.all():
-            reward -= SAME_POSITION_PUNISHMENT
 
         # check the num of observed frontiers
         frontiers_to_check = frontiers[:, 0] + frontiers[:, 1] * 1j
@@ -153,7 +143,16 @@ class Env():
         frontiers_num = np.intersect1d(frontiers_to_check, pre_frontiers_to_check).shape[0]
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
-        reward += delta_num / FRONTIER_DENOMINATOR
+
+        if dist > 0 and delta_num > 0:
+            reward += delta_num / FRONTIER_DENOMINATOR
+            reward -= dist / DIST_DENOMINATOR
+        else:
+            reward -= SAME_POSITION_PUNISHMENT
+            # if dist != 0:
+            #     reward -= dist / DIST_DENOMINATOR
+            # elif same_position.all():
+            #     reward -= SAME_POSITION_PUNISHMENT
 
         # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}\n")
         return reward * REWARD_SCALE_FACTOR

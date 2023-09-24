@@ -7,10 +7,9 @@ import numpy as np
 import ray
 
 import os
-import csv
-import time
+
 import random
-import datetime
+
 
 from network import RL_Policy
 from runner import RLRunner
@@ -84,8 +83,8 @@ def main():
     for i, meta_agent in enumerate(meta_agents):
         curr_episode += 1
         job_list.append(meta_agent.job.remote(actor_critic_weights, curr_episode))
-        # initialize metric collector
-
+    
+    # initialize metric collector
     metric_name = ['travel_dist', 'success_rate', 'explored_rate']
     training_data = []
     perf_metrics = {}
