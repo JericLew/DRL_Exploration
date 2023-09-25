@@ -6,4 +6,4 @@ scipy==1.9.3
 scikit-image==0.19.3
 scikit-learn==1.2.0
 matplotlib==3.6.2
-tensorboard==1.11.0
+tensorboard==2.14.0
