@@ -8,6 +8,7 @@ from sensor import *
 from graph_generator import *
 from node import *
 from parameter import *
+from sklearn.cluster import KMeans
 
 class Env():
     def __init__(self, map_index, k_size=20, plot=False, test=False):
@@ -25,7 +26,7 @@ class Env():
         self.ground_truth_size = np.shape(self.ground_truth)  # (480, 640)
 
         # initialize parameters
-        self.resolution = 4 # to downsample the map for frontier
+        self.resolution = 4 # to downsample the map for frontier default 4
         self.sensor_range = 80
         self.explored_rate = 0
 
@@ -40,6 +41,7 @@ class Env():
 
         # Arrays for global input update
         self.frontiers = None
+        self.cluster_centers = None
         self.visited_map = np.zeros(self.ground_truth_size)
         self.visited_map[self.start_position[1] - 4:self.start_position[1] + 5,\
                         self.start_position[0] - 4:self.start_position[0] + 5] = 1
@@ -64,6 +66,7 @@ class Env():
         self.downsampled_belief = block_reduce(self.robot_belief.copy(), block_size=(self.resolution, self.resolution),
                                                func=np.min)
         self.frontiers = self.find_frontier()
+        self.cluster_centers = self.find_cluster_frontiers(self.frontiers)
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
         self.node_coords, self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
@@ -83,6 +86,10 @@ class Env():
                                                func=np.min)
 
         frontiers = self.find_frontier()
+        if len(frontiers>0):
+            cluster_centers = self.find_cluster_frontiers(frontiers)
+        else:
+            cluster_centers = np.empty_like(self.cluster_centers)
         self.explored_rate = self.evaluate_exploration_rate()
 
         # calculate the reward associated with the action
@@ -100,6 +107,7 @@ class Env():
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
         self.frontiers = frontiers
+        self.cluster_centers = cluster_centers
 
         # check if done
         done = self.check_done()
@@ -154,7 +162,7 @@ class Env():
             elif same_position.all():
                 reward -= SAME_POSITION_PUNISHMENT
 
-        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
+        print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
         return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):
@@ -198,13 +206,36 @@ class Env():
         f = f * self.resolution
 
         return f
+    
+    def find_cluster_frontiers(self, frontiers, min_cluster_size=3):
+        # Number of clusters (you can adjust this based on your requirements)
+        num_clusters = len(frontiers)//5 + 1
 
+        # Extract x and y coordinates separately for clustering
+        coordinates = np.array(frontiers)
+        x_coords = coordinates[:, 0]
+        y_coords = coordinates[:, 1]
+
+        # Create a feature matrix by stacking x and y coordinates
+        feature_matrix = np.column_stack((x_coords, y_coords))
+
+        # Perform K-means clustering
+        kmeans = KMeans(n_init= 'auto',n_clusters=num_clusters)
+        kmeans.fit(feature_matrix)
+
+        # Get cluster labels and cluster centers
+        cluster_labels = kmeans.labels_
+        cluster_centers = kmeans.cluster_centers_
+
+        return cluster_centers
+    
     def plot_env(self, n, path, step, travel_dist):
         plt.switch_backend('agg')
         # plt.ion()
         plt.cla()
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
+        plt.scatter(self.cluster_centers[:, 0], self.cluster_centers[:, 1], marker='x', s=50, c='orange')
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
         plt.plot(self.targets[-5:, 0], self.targets[-5:, 1], 'g--', linewidth=2)
         plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'gx', markersize=8)
