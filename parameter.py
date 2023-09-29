@@ -18,7 +18,7 @@ SAVE_IMG_GAP = 1 # episode interval for gif saving
 SAVE_FREQ = 32 # How often we save model in number of episodes
 
 '''REWARD PARAMETERS'''
-FINISHING_REWARD = 1 # this is not scaled
+FINISHING_REWARD = 20
 SAME_POSITION_PUNISHMENT = 0.6
 DIST_DENOMINATOR = 64 # 0 to 66, ave 45
 FRONTIER_DENOMINATOR = 25 # 0 to 20 , super sparse

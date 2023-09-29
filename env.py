@@ -104,7 +104,7 @@ class Env():
         # check if done
         done = self.check_done()
         if done:
-            reward += FINISHING_REWARD
+            reward += FINISHING_REWARD * REWARD_SCALE_FACTOR
 
         return reward, done, robot_position, travel_dist
 
