@@ -154,7 +154,7 @@ class Env():
             elif same_position.all():
                 reward -= SAME_POSITION_PUNISHMENT
 
-        print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
+        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
         return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):

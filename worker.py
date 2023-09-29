@@ -251,5 +251,5 @@ class Worker:
         print('gif complete\n')
 
         # Remove files
-        # for filename in self.env.frame_files[:-1]:
-        #     os.remove(filename)
+        for filename in self.env.frame_files[:-1]:
+            os.remove(filename)
