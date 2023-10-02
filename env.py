@@ -162,7 +162,7 @@ class Env():
             elif same_position.all():
                 reward -= SAME_POSITION_PUNISHMENT
 
-        print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
+        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
         return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):
@@ -207,9 +207,9 @@ class Env():
 
         return f
     
-    def find_cluster_frontiers(self, frontiers, min_cluster_size=3):
+    def find_cluster_frontiers(self, frontiers):
         # Number of clusters (you can adjust this based on your requirements)
-        num_clusters = len(frontiers)//5 + 1
+        num_clusters = len(frontiers)//8 + 1
 
         # Extract x and y coordinates separately for clustering
         coordinates = np.array(frontiers)

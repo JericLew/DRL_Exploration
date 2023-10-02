@@ -54,4 +54,4 @@ if __name__=='__main__':
     runner = RLRunner.remote(0)
     job_id = runner.do_job.remote(1)
     out = ray.get(job_id)
-    print(out[1])
+    print(out[148])
