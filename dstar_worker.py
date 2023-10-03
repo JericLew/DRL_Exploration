@@ -22,10 +22,9 @@ class Worker:
         # Initalise simulation environment
         self.metaAgentID = meta_agent_id
         self.global_step = global_step
-        self.k_size = K_SIZE
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.save_image = save_image
-        self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image)
+        self.env = Env(map_index=self.global_step, plot=save_image)
 
         # Initialise varibles
         self.travel_dist = 0
@@ -153,16 +152,20 @@ class Worker:
 
         start_id = self.env.find_node_id_from_coords(self.robot_position)
         goal_id = self.env.find_node_id_from_coords(target_position)
-        self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph, start_id, goal_id)
+        self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph_generator.graph, start_id, goal_id)
 
         reward = 0
 
         for num_step in range(self.max_timestep):
+
+            planning_step = num_step // NUM_ACTION_STEP
+            action_step = num_step % NUM_ACTION_STEP      
+
             self.env.graph_generator.dstar_driver.computeShortestPath()
             next_position_id = self.env.graph_generator.dstar_driver.nextInShortestPath()
 
             if next_position_id: # CHECK IF NEXT COORD CAN BE FOUND
-                next_position = self.env.graph.nodes[next_position_id].coord
+                next_position = self.env.graph_generator.graph.nodes[next_position_id].coord
             else:
                 next_position = self.robot_position
 
@@ -170,14 +173,37 @@ class Worker:
                 self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             reward += step_reward
 
-            observations = self.get_observations()
-            self.save_observations(observations)
-            
             # save a frame
             if self.save_image:
                 if not os.path.exists(gifs_path):
                     os.makedirs(gifs_path)
                 self.env.plot_env(self.global_step, gifs_path, num_step, self.travel_dist)
+            
+            # At last action step do global selection
+            if action_step == NUM_ACTION_STEP - 1 or done:
+                self.save_action(action, action_log_probs)
+                self.save_reward_done(reward, done)
+
+                reward = 0
+
+                if done or planning_step == NUM_PLANNING_STEP - 1:
+                    self.save_return(self.episode_buffer[3]) # input rewards to cal return
+                    break
+
+                observations = self.get_observations()
+                self.save_observations(observations)
+                value, action, action_log_probs = self.actor_critic.act(observations)
+                target_position = self.find_target_pos(action)
+
+                start_id = self.env.find_node_id_from_coords(self.robot_position)
+                goal_id = self.env.find_node_id_from_coords(target_position)
+                self.env.graph_generator.reset_dstar_values()
+                self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph_generator.graph, start_id, goal_id)
+            
+       # save metrics
+        self.perf_metrics['travel_dist'] = self.travel_dist
+        self.perf_metrics['explored_rate'] = self.env.explored_rate
+        self.perf_metrics['success_rate'] = done
 
         # save gif
         if self.save_image:

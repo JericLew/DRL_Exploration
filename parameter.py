@@ -14,22 +14,21 @@ model_path = f'model/{FOLDER_NAME}'
 train_path = f'train/{FOLDER_NAME}'
 gifs_path = f'gifs/{FOLDER_NAME}'
 GLOBAL_SAVE_IMG = True # False to have no image saved at all
-SAVE_IMG_GAP = 1 # episode interval for gif saving
+SAVE_IMG_GAP = 10 # episode interval for gif saving
 SAVE_FREQ = 32 # How often we save model in number of episodes
 
 '''REWARD PARAMETERS'''
-FINISHING_REWARD = 1 # this is not scaled
+FINISHING_REWARD = 10
 SAME_POSITION_PUNISHMENT = 0.6
 DIST_DENOMINATOR = 64 # 0 to 66, ave 45
 FRONTIER_DENOMINATOR = 25 # 0 to 20 , super sparse
 REWARD_SCALE_FACTOR = 0.05 # multply to rewards
 
 '''WORKER PARAMETERS'''
-MAX_TIMESTEP_PER_EPISODE = 120
-NUM_PLANNING_STEP = 1
-NUM_ACTION_STEP = 120
-K_SIZE = 8  # the number of neighboring nodes
-MAP_DOWNSIZE_FACTOR = 1
+NUM_PLANNING_STEP = 32
+NUM_ACTION_STEP = 4
+MAX_TIMESTEP_PER_EPISODE = NUM_PLANNING_STEP * NUM_ACTION_STEP
+MAP_DOWNSIZE_FACTOR = 1 # used to be 2
 
 '''ENV PARAMETERS'''
 UNIFORM_POINT_INTERVAL = 30

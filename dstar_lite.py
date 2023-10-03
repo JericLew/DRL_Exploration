@@ -82,7 +82,8 @@ class DStarLite:
         min_rhs = float('inf')
         next_start_id = None
         if self.graph.nodes[self.start_id].rhs == float('inf'):
-            print('You are stuck')
+            # print('You are stuck')
+            return next_start_id
         else:
             for (neighbour_id, neighbour_cost) in self.graph.nodes[self.start_id].neighbours.items():
                 neighbour_cost = self.graph.nodes[neighbour_id].g + neighbour_cost
@@ -92,5 +93,6 @@ class DStarLite:
             if next_start_id:
                 return next_start_id
             else:
-                raise ValueError('could not find child for transition!')
-            
+                # raise ValueError('could not find child for transition!')
+                # print("Could not find next neighbour")
+                return next_start_id     

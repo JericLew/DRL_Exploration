@@ -6,11 +6,10 @@ from skimage.measure import block_reduce
 
 from sensor import *
 from parameter import *
-from dstar_lite import *
 from my_graph_generator import *
 
 class Env():
-    def __init__(self, map_index, k_size=20, plot=False, test=False):
+    def __init__(self, map_index, plot=False, test=False):
         # import environment ground truth from dungeon files
         self.test = test
         if self.test:
@@ -35,8 +34,7 @@ class Env():
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
         # initialize graph generator
-        self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
-        self.graph = Graph()
+        self.graph_generator = Graph_generator(map_size=self.ground_truth_size, plot=plot)
 
         # Arrays for global input update
         self.frontiers = None
@@ -67,7 +65,7 @@ class Env():
         self.frontiers = self.find_frontier()
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
-        self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
+        self.graph_generator.generate_graph(self.robot_belief)
 
     def step(self, robot_position, next_position, target_position, travel_dist):
         
@@ -83,7 +81,6 @@ class Env():
             self.graph_generator.dstar_driver.start_id = self.find_node_id_from_coords(next_position)
         # if reach goal, dont move until target changes
         else:
-            print("hi")
             next_position = robot_position
 
         # Calculate and update total dist
@@ -110,7 +107,7 @@ class Env():
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
         # update graph
-        self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
+        self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -119,7 +116,7 @@ class Env():
         # check if done
         done = self.check_done()
         if done:
-            reward += FINISHING_REWARD
+            reward += FINISHING_REWARD * REWARD_SCALE_FACTOR
 
         return reward, done, robot_position, travel_dist
 

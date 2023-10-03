@@ -1,7 +1,7 @@
 import torch
 import ray
 from network import RL_Policy
-from worker import Worker
+from dstar_worker import Worker
 from parameter import *
 
 

@@ -8,13 +8,12 @@ from my_graph import Node, Graph
 # TODO optimise graph generation and update
 
 class Graph_generator:
-    def __init__(self, map_size, k_size, sensor_range, plot=False):
+    def __init__(self, map_size, plot=False):
         self.graph = Graph()
         self.plot = plot
         self.map_x = map_size[1]
         self.map_y = map_size[0]
         self.uniform_points = self.generate_uniform_points()
-        self.sensor_range = sensor_range
         self.x = []
         self.y = []
         self.node_coords = None
@@ -68,7 +67,7 @@ class Graph_generator:
                 error += dx
         return collision
     
-    def generate_graph(self, robot_location, robot_belief):
+    def generate_graph(self, robot_belief):
         node_coords = self.uniform_points[:]
         self.node_coords = node_coords
         # GENERATE NODES
@@ -99,7 +98,7 @@ class Graph_generator:
                 for neighbour_id in node.neighbours.keys():
                     self.x.append([node.coord[0], self.graph.nodes[neighbour_id].coord[0]])
                     self.y.append([node.coord[1], self.graph.nodes[neighbour_id].coord[1]])
-        return self.graph
+        # return self.graph
 
     def update_graph(self, robot_belief, old_robot_belief):
         # GENERATE NEIGHBOURS (8-Connected)
@@ -124,4 +123,10 @@ class Graph_generator:
                 for neighbour_id in node.neighbours.keys():
                     self.x.append([node.coord[0], self.graph.nodes[neighbour_id].coord[0]])
                     self.y.append([node.coord[1], self.graph.nodes[neighbour_id].coord[1]])
-        return self.graph
+        # return self.graph
+
+    def reset_dstar_values(self):
+        for node in self.graph.nodes.values():
+            node.g = float("inf")
+            node.rhs = float("inf")
+        # return self.graph
