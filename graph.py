@@ -8,6 +8,8 @@ class Graph:
     def __init__(self):
         self.nodes = set()
         self.edges = dict()
+        self.rhs_values = dict()
+        self.g_values = dict()
 
     def add_node(self, node):
         self.nodes.add(node)

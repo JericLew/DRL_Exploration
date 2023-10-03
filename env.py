@@ -77,6 +77,7 @@ class Env():
         same_position = robot_position == next_position
         robot_position = next_position 
 
+        # print(next_position)
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
         self.downsampled_belief = block_reduce(self.robot_belief.copy(), block_size=(self.resolution, self.resolution),
@@ -95,6 +96,9 @@ class Env():
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
         # update the graph
+        start_pos_id = self.find_index_from_coords(robot_position)
+        next_position_id = self.find_index_from_coords(next_position)
+        self.graph_generator.k_m += self.graph_generator.h(start_pos_id, next_position_id)
         self.node_coords, self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
@@ -205,6 +209,9 @@ class Env():
         plt.cla()
         plt.imshow(self.robot_belief, cmap='gray')
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
+        # for i in range(len(self.graph_generator.x)):
+        #     plt.plot(self.graph_generator.x[i], self.graph_generator.y[i], 'tan', zorder=1)  # plot edges will take long time
+        # plt.scatter(self.node_coords[:, 0], self.node_coords[:, 1], c='b', zorder=5)
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
         plt.plot(self.targets[-5:, 0], self.targets[-5:, 1], 'g--', linewidth=2)
         plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'gx', markersize=8)

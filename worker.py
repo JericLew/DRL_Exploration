@@ -141,7 +141,7 @@ class Worker:
         local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
                       int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
-        target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
+        target_position = np.array([int(post_sig_action[1] * local_size[1] + lmb[2]), int(post_sig_action[0] * local_size[0] + lmb[0])]) # [x,y]
         return target_position
 
     def find_waypoint(self, target_position):
@@ -159,18 +159,11 @@ class Worker:
         observations = self.get_observations()
         self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
-
-        '''From raw action -> target pos -> waypoint
-        -> waypoint node -> waypoint node pos'''
-        # target_position = self.find_target_pos(action)
-        # waypoint = self.find_waypoint(target_position)
-        # waypoint_node_index = self.env.find_index_from_coords(waypoint)
-        # waypoint_node_position = self.env.node_coords[waypoint_node_index]
-
-        '''From raw action -> target pos -> target node -> target not pos'''
         target_position = self.find_target_pos(action)
+
+        start_pos_id = self.env.find_index_from_coords(self.robot_position)
         target_node_index = self.env.find_index_from_coords(target_position)
-        target_node_position = self.env.node_coords[target_node_index]
+        self.env.graph_generator.initDStarLite(start_pos_id, target_node_index)
 
         reward = 0
 
@@ -179,23 +172,40 @@ class Worker:
             planning_step = num_step // NUM_ACTION_STEP
             action_step = num_step % NUM_ACTION_STEP
 
+            next_position_id = self.env.graph_generator.nextInShortestPath()
+            next_position = self.env.node_coords[next_position_id]
+
+            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
+            reward += step_reward
+
+            self.env.graph_generator.computeShortestPath()
+
+            # TODO add reach goal
+
+
+            '''target pos -> waypoint -> waypoint node -> waypoint node pos'''
+            # waypoint = self.find_waypoint(target_position)
+            # waypoint_node_index = self.env.find_index_from_coords(waypoint)
+            # waypoint_node_position = self.env.node_coords[waypoint_node_index]
+            
+            '''target pos -> target node -> target not pos'''
+            # target_node_index = self.env.find_index_from_coords(target_position)
+            # target_node_position = self.env.node_coords[target_node_index]  
+
             # Use a star to find shortest path to target node
-            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
+            # dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
 
             # Handle route given
             # If target == curent pos, remain at same spot
             # Elif target == unreachable, remain at same spot
             # NOTE can have a better way to do this, ie find closest point?
             # Else gp tp next node in path planned by astar
-            if route == []: 
-                next_position = self.robot_position
-            elif route == None: 
-                next_position = self.robot_position
-            else:
-                next_position = self.env.node_coords[int(route[1])]
-
-            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
-            reward += step_reward
+            # if route == []: 
+            #     next_position = self.robot_position
+            # elif route == None: 
+            #     next_position = self.robot_position
+            # else:
+            #     next_position = self.env.node_coords[int(route[1])]
             
             # save a frame
             if self.save_image:
@@ -217,18 +227,8 @@ class Worker:
                 observations = self.get_observations()
                 self.save_observations(observations)
                 value, action, action_log_probs = self.actor_critic.act(observations)
-
-                '''From raw action -> target pos -> waypoint
-                -> waypoint node -> waypoint node pos'''
-                # target_position = self.find_target_pos(action)
-                # waypoint = self.find_waypoint(target_position)
-                # waypoint_node_index = self.env.find_index_from_coords(waypoint)
-                # waypoint_node_position = self.env.node_coords[waypoint_node_index]
-                
-                '''From raw action -> target pos -> target node -> target not pos'''
                 target_position = self.find_target_pos(action)
-                target_node_index = self.env.find_index_from_coords(target_position)
-                target_node_position = self.env.node_coords[target_node_index]   
+
 
         # save metrics
         self.perf_metrics['travel_dist'] = self.travel_dist
