@@ -1,8 +1,8 @@
 import torch
 import ray
-from network import RL_Policy
-from dstar_worker import Worker
 from parameter import *
+from worker import Worker
+from network import RL_Policy
 
 
 class Runner(object):

@@ -1,4 +1,5 @@
 import heapq
+
 from my_graph import Node, Graph
 
 class DStarLite:

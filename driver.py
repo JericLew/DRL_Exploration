@@ -1,19 +1,16 @@
+import os
+import ray
 import torch
+import random
+import numpy as np
+
 from torch import nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
-import numpy as np
-import ray
-
-import os
-
-import random
-
-
-from network import RL_Policy
-from runner import RLRunner
 from parameter import *
+from runner import RLRunner
+from network import RL_Policy
 
 ray.init()
 print("Welcome to RL autonomous exploration!")

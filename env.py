@@ -1,6 +1,7 @@
 import os
 import copy
 import matplotlib.pyplot as plt
+
 from skimage import io
 from skimage.measure import block_reduce
 
@@ -156,13 +157,10 @@ class Env():
         pre_frontiers_num = pre_frontiers_to_check.shape[0]
         delta_num = pre_frontiers_num - frontiers_num
 
-        if dist > 0 and delta_num > 0:
-            reward += delta_num / FRONTIER_DENOMINATOR
-            reward -= dist / DIST_DENOMINATOR
-        else:
+        reward -= dist / DIST_DENOMINATOR
+        reward += delta_num / FRONTIER_DENOMINATOR
+        if dist == 0:
             reward -= SAME_POSITION_PUNISHMENT
-            # if dist != 0:
-            #     reward -= dist / DIST_DENOMINATOR
 
         # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}\n")
         return reward * REWARD_SCALE_FACTOR
