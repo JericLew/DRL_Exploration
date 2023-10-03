@@ -51,8 +51,6 @@ class Graph_generator:
     def generate_graph(self, robot_location, robot_belief):
         node_coords = self.uniform_points[:]
         self.node_coords = self.unique_coords(node_coords).reshape(-1, 2)
-        # add robot location as one node coords
-        self.node_coords = self.unique_coords(node_coords).reshape(-1, 2)
         # generate the neighbours for graphs
         self.generate_edges(self.node_coords, robot_belief)
 
@@ -60,31 +58,32 @@ class Graph_generator:
 
     def generate_edges(self, node_coords, robot_belief):
         X = node_coords
-        for id, node_coord in enumerate(X):
-            row = id % 30
-            col = id // 30
+        # for id, node_coord in enumerate(X):
+        #     row = id % 30
+        #     col = id // 30
 
-            a = str(self.find_index_from_coords(node_coords, node_coord))
-            self.graph.add_node(a)
-            self.graph.g_values[int(a)] = float("inf")
-            self.graph.rhs_values[int(a)] = float("inf")
-            if row > 0:
-                neighbour_coord = node_coords[id - 1]
-                b = str(self.find_index_from_coords(node_coords, neighbour_coord))
-            if row + 1 < 30:
-            if col > 0:
-            if col + 1 < 30:
+        #     a = str(self.find_index_from_coords(node_coords, node_coord))
+        #     self.graph.add_node(a)
+        #     self.graph.g_values[int(a)] = float("inf")
+        #     self.graph.rhs_values[int(a)] = float("inf")
+        #     if row > 0:
+        #         neighbour_coord = node_coords[id - 1]
+        #         b = str(self.find_index_from_coords(node_coords, neighbour_coord))
+        #     if row + 1 < 30:
+        #     if col > 0:
+        #     if col + 1 < 30:
 
-
-        # if len(node_coords) >= self.k_size:
-        #     knn = NearestNeighbors(n_neighbors=self.k_size)
-        # else:
-        #     knn = NearestNeighbors(n_neighbors=len(node_coords))
-        # knn.fit(X)
-        # distances, indices = knn.kneighbors(X)
+        if len(node_coords) >= self.k_size:
+            knn = NearestNeighbors(n_neighbors=self.k_size)
+        else:
+            knn = NearestNeighbors(n_neighbors=len(node_coords))
+        knn.fit(X)
+        distances, indices = knn.kneighbors(X)
 
         for i, p in enumerate(X):
             for j, neighbour in enumerate(X[indices[i][:]]):
+                if j == 0:
+                    continue
                 start = p
                 end = neighbour
                 a = str(self.find_index_from_coords(node_coords, p))
@@ -92,25 +91,30 @@ class Graph_generator:
                 self.graph.add_node(a)
                 self.graph.g_values[int(a)] = float("inf")
                 self.graph.rhs_values[int(a)] = float("inf")
-                if not self.check_collision(start, end, robot_belief):
+                if self.check_collision(start, end, robot_belief):
                     self.graph.add_edge(a, b, float("inf"))
+                    self.graph.add_edge(b, a, float("inf"))
                 else:
                     self.graph.add_edge(a, b, distances[i, j])
+                    self.graph.add_edge(b, a, distances[i, j])
+
 
                 if self.plot:
                     self.x.append([p[0], neighbour[0]])
                     self.y.append([p[1], neighbour[1]])
 
     def update_edges(self, new_free_node_coords, robot_belief):
+        print("updating edges")
         X = new_free_node_coords
         for node_coord in X:
             node_id = str(self.find_index_from_coords(self.node_coords, node_coord))
             for edge in self.graph.edges[node_id].values():
                 neighbour_id = int(edge.to_node)
                 neighbour_coord = self.node_coords[neighbour_id]
-                if not self.check_collision(node_coord, neighbour_coord, robot_belief):
+                if self.check_collision(node_coord, neighbour_coord, robot_belief):
                     edge.length = float("inf")
-            self.updateVertex(node_id)
+                    self.graph.edges[str(neighbour_id)][node_id].length = float("inf")
+            self.updateVertex(int(node_id))
             
 
     def update_graph(self, robot_belief, old_robot_belief):
@@ -120,7 +124,7 @@ class Graph_generator:
         uniform_points_to_check = self.uniform_points[:, 0] + self.uniform_points[:, 1] * 1j
         _, _, candidate_indices = np.intersect1d(free_area_to_check, uniform_points_to_check, return_indices=True)
         new_free_node_coords = self.uniform_points[candidate_indices]
-        self.update_edges(new_free_node_coords, robot_belief)
+        self.update_edges(new_free_node_coords, robot_belief) # TODO WORKS IF I CHANGE UPDATE TO ALL 
 
         return self.node_coords, self.graph.edges
     
@@ -205,9 +209,9 @@ class Graph_generator:
             if k == 1:
                 collision = True
                 break
-            if k == 127: # REMOVED COLLISION IN UNEXPLORED
-                collision = True
-                break
+            # if k == 127: # REMOVED COLLISION IN UNEXPLORED
+            #     collision = True
+            #     break
             if error > 0:
                 x += x_inc
                 error -= dy
@@ -239,7 +243,8 @@ class Graph_generator:
     def h(self, id, destination):
         current = self.node_coords[id]
         end = self.node_coords[destination]
-        h = abs(end[0] - current[0]) + abs(end[1] - current[1])
+        # h = abs(end[0] - current[0]) + abs(end[1] - current[1])
+        h = max(abs(end[0] - current[0]), abs(end[1] - current[1]))
         # h = ((end[0]-current[0])**2 + (end[1] - current[1])**2)**(1/2)
         return h
 
@@ -302,9 +307,11 @@ class Graph_generator:
         if self.graph.rhs_values[self.start_id] == float('inf'):
             print('You are done stuck')
         else:
+            print(self.start_id)
             for edge in self.graph.edges[str(self.start_id)].values():
                 neighbour_id = int(edge.to_node)
-                neighbour_cost = self.graph.g_values[neighbour_id]
+                print(neighbour_id)
+                neighbour_cost = self.graph.g_values[neighbour_id] + edge.length
                 if (neighbour_cost) < min_rhs:
                     min_rhs = neighbour_cost
                     next_start_id = neighbour_id

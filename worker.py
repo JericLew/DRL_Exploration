@@ -174,6 +174,8 @@ class Worker:
 
             next_position_id = self.env.graph_generator.nextInShortestPath()
             next_position = self.env.node_coords[next_position_id]
+            self.env.graph_generator.start_id = next_position_id
+            # print(next_position_id)
 
             step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             reward += step_reward

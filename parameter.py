@@ -26,9 +26,9 @@ REWARD_SCALE_FACTOR = 0.05 # multply to rewards
 
 '''WORKER PARAMETERS'''
 MAX_TIMESTEP_PER_EPISODE = 120
-NUM_PLANNING_STEP = 24
-NUM_ACTION_STEP = 5
-K_SIZE = 3  # the number of neighboring nodes
+NUM_PLANNING_STEP = 1
+NUM_ACTION_STEP = 120
+K_SIZE = 8  # the number of neighboring nodes
 MAP_DOWNSIZE_FACTOR = 1
 
 '''ENV PARAMETERS'''
