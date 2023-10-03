@@ -5,8 +5,7 @@ from skimage.measure import block_reduce
 import copy
 
 from sensor import *
-from graph_generator import *
-from node import *
+from my_graph_generator import *
 from parameter import *
 
 class Env():
@@ -36,7 +35,7 @@ class Env():
 
         # initialize graph generator
         self.graph_generator = Graph_generator(map_size=self.ground_truth_size, sensor_range=self.sensor_range, k_size=k_size, plot=plot)
-        self.node_coords, self.graph = None, None
+        self.graph = Graph()
 
         # Arrays for global input update
         self.frontiers = None
@@ -52,9 +51,14 @@ class Env():
         self.plot = plot
         self.frame_files = []
 
-    def find_index_from_coords(self, position):
-        index = np.argmin(np.linalg.norm(self.node_coords - position, axis=1))
-        return index
+    # def find_index_from_coords(self, position):
+    #     index = np.argmin(np.linalg.norm(self.node_coords - position, axis=1))
+    #     return index
+
+    def find_node_id_from_coords(self, position):
+        index = np.argmin(np.linalg.norm(self.graph_generator.node_coords - position, axis=1))
+        node_id = self.graph_generator.node_ids[index]
+        return node_id
 
     def begin(self):
         self.robot_belief = self.update_robot_belief(self.start_position, self.sensor_range, self.robot_belief,
@@ -66,7 +70,7 @@ class Env():
         self.frontiers = self.find_frontier()
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
-        self.node_coords, self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
+        self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
 
 
     def step(self, robot_position, next_position, target_position, travel_dist):
@@ -96,10 +100,10 @@ class Env():
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
         # update the graph
-        start_pos_id = self.find_index_from_coords(robot_position)
-        next_position_id = self.find_index_from_coords(next_position)
-        self.graph_generator.k_m += self.graph_generator.h(start_pos_id, next_position_id)
-        self.node_coords, self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
+        # start_pos_id = self.find_index_from_coords(robot_position)
+        # next_position_id = self.find_index_from_coords(next_position)
+        # self.graph_generator.k_m += self.graph_generator.h(start_pos_id, next_position_id)
+        self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
