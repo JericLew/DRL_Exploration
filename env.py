@@ -1,12 +1,13 @@
-from skimage import io
-import matplotlib.pyplot as plt
 import os
-from skimage.measure import block_reduce
 import copy
+import matplotlib.pyplot as plt
+from skimage import io
+from skimage.measure import block_reduce
 
 from sensor import *
-from my_graph_generator import *
 from parameter import *
+from dstar_lite import *
+from my_graph_generator import *
 
 class Env():
     def __init__(self, map_index, k_size=20, plot=False, test=False):
@@ -51,10 +52,6 @@ class Env():
         self.plot = plot
         self.frame_files = []
 
-    # def find_index_from_coords(self, position):
-    #     index = np.argmin(np.linalg.norm(self.node_coords - position, axis=1))
-    #     return index
-
     def find_node_id_from_coords(self, position):
         index = np.argmin(np.linalg.norm(self.graph_generator.node_coords - position, axis=1))
         node_id = self.graph_generator.node_ids[index]
@@ -72,16 +69,29 @@ class Env():
 
         self.graph = self.graph_generator.generate_graph(self.start_position, self.robot_belief)
 
-
     def step(self, robot_position, next_position, target_position, travel_dist):
-        # move the robot to the selected position and update its belief
+        
+        # check if havent reach goal
+        robot_position_id = self.find_node_id_from_coords(robot_position)
+        target_position_id = self.find_node_id_from_coords(target_position)
+        if robot_position_id != target_position_id:
+            # Increment k_m and change start_id
+            self.graph_generator.dstar_driver.k_m +=\
+                self.graph_generator.dstar_driver.h(
+                    self.find_node_id_from_coords(robot_position),
+                    self.find_node_id_from_coords(next_position))
+            self.graph_generator.dstar_driver.start_id = self.find_node_id_from_coords(next_position)
+        # if reach goal, dont move until target changes
+        else:
+            print("hi")
+            next_position = robot_position
+
+        # Calculate and update total dist
         dist = np.linalg.norm(robot_position - next_position)
         travel_dist += dist
-
-        same_position = robot_position == next_position
-        robot_position = next_position 
-
-        # print(next_position)
+        
+        # move the robot to the selected position and update its belief
+        robot_position = next_position
         self.robot_belief = self.update_robot_belief(robot_position, self.sensor_range, self.robot_belief,
                                                      self.ground_truth)
         self.downsampled_belief = block_reduce(self.robot_belief.copy(), block_size=(self.resolution, self.resolution),
@@ -91,7 +101,7 @@ class Env():
         self.explored_rate = self.evaluate_exploration_rate()
 
         # calculate the reward associated with the action
-        reward = self.calculate_reward(dist, frontiers, same_position)
+        reward = self.calculate_reward(dist, frontiers)
 
         self.visited_map[robot_position[1] - 4:robot_position[1] + 5,\
                         robot_position[0] - 4:robot_position[0] + 5] = 1 # for masking to update observation
@@ -99,10 +109,7 @@ class Env():
         self.visited = np.append(self.visited, [robot_position], axis=0) # can be faster?
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
-        # update the graph
-        # start_pos_id = self.find_index_from_coords(robot_position)
-        # next_position_id = self.find_index_from_coords(next_position)
-        # self.graph_generator.k_m += self.graph_generator.h(start_pos_id, next_position_id)
+        # update graph
         self.graph = self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
@@ -141,8 +148,8 @@ class Env():
         elif len(self.frontiers) == 0:
             done = True
         return done
-
-    def calculate_reward(self, dist, frontiers, same_position):
+    
+    def calculate_reward(self, dist, frontiers):
         reward = 0
 
         # check the num of observed frontiers
@@ -159,8 +166,6 @@ class Env():
             reward -= SAME_POSITION_PUNISHMENT
             # if dist != 0:
             #     reward -= dist / DIST_DENOMINATOR
-            # elif same_position.all():
-            #     reward -= SAME_POSITION_PUNISHMENT
 
         # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}\n")
         return reward * REWARD_SCALE_FACTOR
@@ -215,7 +220,7 @@ class Env():
         plt.axis((0, self.ground_truth_size[1], self.ground_truth_size[0], 0))
         # for i in range(len(self.graph_generator.x)):
         #     plt.plot(self.graph_generator.x[i], self.graph_generator.y[i], 'tan', zorder=1)  # plot edges will take long time
-        # plt.scatter(self.node_coords[:, 0], self.node_coords[:, 1], c='b', zorder=5)
+        # plt.scatter(self.graph_generator.node_coords[:, 0], self.graph_generator.node_coords[:, 1], c='b', zorder=5)
         plt.scatter(self.frontiers[:, 0], self.frontiers[:, 1], c='r', s=2, zorder=3)
         plt.plot(self.targets[-5:, 0], self.targets[-5:, 1], 'g--', linewidth=2)
         plt.plot(self.targets[-1, 0], self.targets[-1, 1], 'gx', markersize=8)

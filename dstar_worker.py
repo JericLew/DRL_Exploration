@@ -1,15 +1,14 @@
-import copy
 import os
+import copy
+import torch
+import imageio
 import matplotlib.pyplot as plt
 
-import imageio
 import numpy as np
-import torch
 import torch.nn as nn
 
 from env import Env
 from parameter import *
-
 
 class Worker:
     def __init__(self, meta_agent_id, actor_critic, global_step, save_image=False):
@@ -151,25 +150,25 @@ class Worker:
         self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
         target_position = self.find_target_pos(action)
-        
-        # override tarpos
-        target_position = [400, 400]
-        
-        start_pos_id = self.env.find_node_id_from_coords(self.robot_position)
-        target_node_id = self.env.find_node_id_from_coords(target_position)
-        self.env.graph_generator.initDStarLite(start_pos_id, target_node_id)
 
+        start_id = self.env.find_node_id_from_coords(self.robot_position)
+        goal_id = self.env.find_node_id_from_coords(target_position)
+        self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph, start_id, goal_id)
 
         reward = 0
 
         for num_step in range(self.max_timestep):
-            next_position_id = self.env.graph_generator.nextInShortestPath()
-            next_position = self.env.graph.nodes[next_position_id].coord
-            self.env.graph_generator.start_id = next_position_id
-            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
-            reward += step_reward
+            self.env.graph_generator.dstar_driver.computeShortestPath()
+            next_position_id = self.env.graph_generator.dstar_driver.nextInShortestPath()
 
-            self.env.graph_generator.computeShortestPath()
+            if next_position_id: # CHECK IF NEXT COORD CAN BE FOUND
+                next_position = self.env.graph.nodes[next_position_id].coord
+            else:
+                next_position = self.robot_position
+
+            step_reward, done, self.robot_position, self.travel_dist =\
+                self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
+            reward += step_reward
 
             observations = self.get_observations()
             self.save_observations(observations)
@@ -196,5 +195,5 @@ class Worker:
         print('gif complete\n')
 
         # Remove files
-        # for filename in self.env.frame_files[:-1]:
-        #     os.remove(filename)
+        for filename in self.env.frame_files[:-1]:
+            os.remove(filename)

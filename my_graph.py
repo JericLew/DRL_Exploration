@@ -1,6 +1,6 @@
 class Node:
-    def __init__(self, id, x, y, coord):
-        self.id = id
+    def __init__(self, index, x, y, coord):
+        self.index = index
         self.x = x
         self.y = y
         self.coord = coord
@@ -15,7 +15,7 @@ class Node:
         self.rhs = float('inf')
 
     def __str__(self):
-        return 'Node: ' + self.id + ' g: ' + str(self.g) + ' rhs: ' + str(self.rhs)
+        return 'Node: ' + self.index + ' g: ' + str(self.g) + ' rhs: ' + str(self.rhs)
 
     def __repr__(self):
         return self.__str__()
@@ -34,15 +34,3 @@ class Graph:
 
     def __repr__(self):
         return self.__str__()
-
-    # def setStart(self, id):
-    #     if(self.graph[id]):
-    #         self.start = id
-    #     else:
-    #         raise ValueError('start id not in graph')
-
-    # def setGoal(self, id):
-    #     if(self.graph[id]):
-    #         self.goal = id
-    #     else:
-    #         raise ValueError('goal id not in graph')
