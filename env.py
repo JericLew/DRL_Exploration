@@ -108,7 +108,7 @@ class Env():
         self.targets = np.append(self.targets, [target_position], axis = 0)
 
         # update graph
-        self.graph_generator.update_graph(self.robot_belief, self.old_robot_belief)
+        self.graph_generator.update_graph(self.robot_belief, robot_position, self.sensor_range)
 
         self.old_robot_belief = copy.deepcopy(self.robot_belief)
 
@@ -141,7 +141,8 @@ class Env():
 
     def check_done(self):
         done = False
-        if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        # if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
             done = True
         elif len(self.frontiers) == 0:
             done = True
@@ -162,7 +163,7 @@ class Env():
         if dist == 0:
             reward -= SAME_POSITION_PUNISHMENT
 
-        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}\n")
+        # print(f"dist {dist}, delta num {delta_num}, reward {reward}, scaled reward {reward * REWARD_SCALE_FACTOR}")
         return reward * REWARD_SCALE_FACTOR
 
     def evaluate_exploration_rate(self):

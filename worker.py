@@ -136,8 +136,10 @@ class Worker:
         with torch.no_grad():
             post_sig_action = nn.Sigmoid()(action).cpu().numpy()
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-        local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
-                      int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
+        local_size = (int(ground_truth_size[0]),\
+                      int(ground_truth_size[1]))  # (h,w)        
+        # local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
+        #               int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
         target_position = np.array([int(post_sig_action[1] * local_size[1] + lmb[2]), int(post_sig_action[0] * local_size[0] + lmb[0])]) # [x,y]
         return target_position
