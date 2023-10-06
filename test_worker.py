@@ -1,14 +1,15 @@
-import imageio
-import csv
 import os
+import csv
 import copy
-import numpy as np
 import torch
-import torch.nn as nn
+import imageio
 import matplotlib.pyplot as plt
+
+import numpy as np
+import torch.nn as nn
+
 from env import Env
 from test_parameter import *
-
 
 class TestWorker:
     def __init__(self, meta_agent_id, actor_critic, global_step, save_image=False):
@@ -20,10 +21,9 @@ class TestWorker:
 
         self.metaAgentID = meta_agent_id
         self.global_step = global_step
-        self.k_size = K_SIZE
         self.max_timestep = MAX_TIMESTEP_PER_EPISODE
         self.save_image = save_image
-        self.env = Env(map_index=self.global_step, k_size=self.k_size, plot=save_image, test=True)
+        self.env = Env(map_index=self.global_step, plot=save_image, test=True)
        
         # Initialise varibles
         self.travel_dist = 0
@@ -118,12 +118,13 @@ class TestWorker:
         done = False
 
         observations = self.get_observations()
+        self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
-        
-        '''From raw action -> target pos -> target node -> target not pos'''
         target_position = self.find_target_pos(action)
-        target_node_index = self.env.find_index_from_coords(target_position)
-        target_node_position = self.env.node_coords[target_node_index]
+
+        start_id = self.env.find_node_id_from_coords(self.robot_position)
+        goal_id = self.env.find_node_id_from_coords(target_position)
+        self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph_generator.graph, start_id, goal_id)
 
         reward = 0
 
@@ -131,24 +132,18 @@ class TestWorker:
             planning_step = num_step // NUM_ACTION_STEP
             action_step = num_step % NUM_ACTION_STEP
 
-            # Use a star to find shortest path to target node
-            dist, route = self.env.graph_generator.find_shortest_path(self.robot_position, target_node_position, self.env.node_coords)
-            
-            # Handle route given
-            # If target == curent pos, remain at same spot
-            # Elif target == unreachable, remain at same spot
-            # NOTE can have a better way to do this, ie find closest point?
-            # Else gp tp next node in path planned by astar
-            if route == []: 
-                next_position = self.robot_position
-            elif route == None: 
-                next_position = self.robot_position
-            else:
-                next_position = self.env.node_coords[int(route[1])]
+            self.env.graph_generator.dstar_driver.computeShortestPath()
+            next_position_id = self.env.graph_generator.dstar_driver.nextInShortestPath()
 
-            step_reward, done, self.robot_position, self.travel_dist = self.env.step(self.robot_position,
-                                                                                     next_position, target_position, self.travel_dist)
+            if next_position_id: # CHECK IF NEXT COORD CAN BE FOUND
+                next_position = self.env.graph_generator.graph.nodes[next_position_id].coord
+            else:
+                next_position = self.robot_position
+
+            step_reward, done, self.robot_position, self.travel_dist =\
+                self.env.step(self.robot_position, next_position, target_position, self.travel_dist)
             reward += step_reward
+
 
             # save a frame
             if self.save_image:
@@ -178,12 +173,14 @@ class TestWorker:
                     break
 
                 observations = self.get_observations()
+                self.save_observations(observations)
                 value, action, action_log_probs = self.actor_critic.act(observations)
-                
-                '''From raw action -> target pos -> target node -> target not pos'''
                 target_position = self.find_target_pos(action)
-                target_node_index = self.env.find_index_from_coords(target_position)
-                target_node_position = self.env.node_coords[target_node_index]   
+
+                start_id = self.env.find_node_id_from_coords(self.robot_position)
+                goal_id = self.env.find_node_id_from_coords(target_position)
+                self.env.graph_generator.reset_dstar_values()
+                self.env.graph_generator.dstar_driver.initDStarLite(self.env.graph_generator.graph, start_id, goal_id)
 
         self.perf_metrics['travel_dist'] = self.travel_dist
         self.perf_metrics['explored_rate'] = self.env.explored_rate
