@@ -14,7 +14,7 @@ class Env():
         # import environment ground truth from dungeon files
         self.test = test
         if self.test:
-            self.map_dir = f'DungeonMaps/easy'  # change to 'complex', 'medium', and 'easy'
+            self.map_dir = f'DungeonMaps/complex'  # change to 'complex', 'medium', and 'easy'
         else:
             self.map_dir = f'DungeonMaps/train'
         self.map_list = os.listdir(self.map_dir)
@@ -141,8 +141,8 @@ class Env():
 
     def check_done(self):
         done = False
-        # if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
-        if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        # if np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
+        if self.test and np.sum(self.ground_truth == 255) - np.sum(self.robot_belief == 255) <= 250:
             done = True
         elif len(self.frontiers) == 0:
             done = True

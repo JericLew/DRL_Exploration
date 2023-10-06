@@ -1,10 +1,10 @@
 '''LOCAL AND GLOBAL DEVICE'''
 USE_GPU = False  # do you want to use GPU to test
 NUM_GPU = 1
-NUM_META_AGENT = 4 # 4 for laptop 8 for desktop
+NUM_META_AGENT = 8 # 4 for laptop 8 for desktop
 
 '''FILE DIRECTORIES AND SAVE FREQUENCIES'''
-FOLDER_NAME = ""
+FOLDER_NAME = "run_2023_10_04_1726"
 model_path = f'model/{FOLDER_NAME}'
 gifs_path = f'results/{FOLDER_NAME}/gifs'
 trajectory_path = f'results/{FOLDER_NAME}/trajectory'
@@ -14,10 +14,11 @@ SAVE_TRAJECTORY = True  # do you want to save per-step metrics
 SAVE_LENGTH = True  # do you want to save per-episode metrics
 
 '''WORKER PARAMETERS'''
-NUM_PLANNING_STEP = 32
-NUM_ACTION_STEP = 4
+NUM_PLANNING_STEP = 16
+NUM_ACTION_STEP = 8
 MAX_TIMESTEP_PER_EPISODE = NUM_PLANNING_STEP * NUM_ACTION_STEP
 MAP_DOWNSIZE_FACTOR = 2
+DOWNSIZE_GOAL = False
 
 '''NETWORK PARAMETERS'''
 INPUT_DIM = (8,480//MAP_DOWNSIZE_FACTOR,640//MAP_DOWNSIZE_FACTOR)

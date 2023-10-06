@@ -108,17 +108,22 @@ class TestWorker:
         with torch.no_grad():
             post_sig_action = nn.Sigmoid()(action).cpu().numpy()
         ground_truth_size = copy.deepcopy(self.env.ground_truth_size)  # (480, 640)
-        local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
-                      int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
+        
+        if DOWNSIZE_GOAL:
+            local_size = (int(ground_truth_size[0] / MAP_DOWNSIZE_FACTOR),\
+                        int(ground_truth_size[1] / MAP_DOWNSIZE_FACTOR))  # (h,w)
+        else:
+            local_size = (int(ground_truth_size[0]),\
+                        int(ground_truth_size[1]))  # (h,w)   
+                 
         lmb = self.get_local_map_boundaries(self.robot_position, local_size, ground_truth_size)
-        target_position = np.array([int(post_sig_action[1] * 320 + lmb[2]), int(post_sig_action[0] * 240 + lmb[0])]) # [x,y]
+        target_position = np.array([int(post_sig_action[1] * local_size[1] + lmb[2]), int(post_sig_action[0] * local_size[0] + lmb[0])]) # [x,y]
         return target_position
     
     def run_episode(self, curr_episode):
         done = False
 
         observations = self.get_observations()
-        self.save_observations(observations)
         value, action, action_log_probs = self.actor_critic.act(observations)
         target_position = self.find_target_pos(action)
 
@@ -173,7 +178,6 @@ class TestWorker:
                     break
 
                 observations = self.get_observations()
-                self.save_observations(observations)
                 value, action, action_log_probs = self.actor_critic.act(observations)
                 target_position = self.find_target_pos(action)
 
